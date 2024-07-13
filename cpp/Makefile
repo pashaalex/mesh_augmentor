@@ -1,6 +1,6 @@
 # Makefile
 
-TARGET_LIB = libmesh_render
+TARGET_LIB = mesh_render
 SRC = mesh_render.cpp
 OBJ = $(SRC:.cpp=.o)
 HEADERS = mesh_render.h
