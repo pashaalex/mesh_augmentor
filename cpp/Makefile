@@ -13,7 +13,7 @@ ifeq ($(OS),Windows_NT)
     CC = x86_64-w64-mingw32-g++
 else
     # Linux
-    TARGET = lib$(TARGET_LIB).so
+    TARGET = $(TARGET_LIB).so
     CXXFLAGS += -fPIC -Wall -m64 -fopenmp
     LDFLAGS += -shared -m64 -fopenmp
     CC = g++

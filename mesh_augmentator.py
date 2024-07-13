@@ -6,9 +6,9 @@ import os
 import math
 
 if os.name == 'nt':
-    mesh_lib = ctypes.CDLL('./mesh_render.dll')
+    mesh_lib = ctypes.CDLL('./cpp/mesh_render.dll')
 else:
-    mesh_lib = ctypes.CDLL('./mesh_render.so')
+    mesh_lib = ctypes.CDLL('./cpp/mesh_render.so')
 
 class Vector3d(Structure):
     _fields_ = [('x', c_float),
