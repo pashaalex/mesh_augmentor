@@ -26,11 +26,6 @@ jobs:
         choco install make
         choco install mingw
 
-    - name: Verify installation (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        choco list -lo
-
     - name: Build library
       run: |
         cd cpp
