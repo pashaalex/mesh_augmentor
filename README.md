@@ -28,18 +28,18 @@ cv2.imwrite("output.jpg", output_image)
 ```
 
 
-Depth of field:
-![Depth of field](depth.gif)
+Depth of field:\
+![Depth of field](doc_images/depth.gif)
 
-Light position change
-![Light position change](light.gif)
+Light position change:\
+![Light position change](doc_images/light.gif)
 
-Light diameter change
-![Light diameter](light_diameter.gif)
+Light diameter change:\
+![Light diameter](doc_images/light_diameter.gif)
 
-Shadow:
-![Shadow](shadow.gif)
+Shadow:\
+![Shadow](doc_images/shadow.gif)
 
-Rotate:
-![Rotate](rotate.gif)
+Rotate:\
+![Rotate](doc_images/rotate.gif)
 
