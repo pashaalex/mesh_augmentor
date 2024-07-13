@@ -26,11 +26,13 @@ jobs:
         choco install make
         choco install mingw
 
-    - name: Find and copy libgomp-1.dll (Windows)
+    - name: Find and copy necessary DLLs (Windows)
       if: matrix.os == 'windows-latest'
       run: |
         $mingwPath = (Get-Command g++).Path.Replace('\bin\g++.exe', '')
-        cp "$mingwPath\bin\libgomp-1.dll" cpp
+        cp "$mingwPath\bin\libgomp-1.dll" .
+        cp "$mingwPath\bin\libgcc_s_seh-1.dll" .
+        cp "$mingwPath\bin\libwinpthread-1.dll" .
 
     - name: Build library
       run: |
@@ -46,5 +48,7 @@ jobs:
           cpp/mesh_render.so
           cpp/*.o
           mesh_augmentator.py
-          cpp/libgomp-1.dll
+          libgomp-1.dll
+          libgcc_s_seh-1.dll
+          libwinpthread-1.dll
         if-no-files-found: ignore
