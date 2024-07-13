@@ -39,5 +39,5 @@ jobs:
           cpp/mesh_render.dll
           cpp/mesh_render.so
           cpp/*.o
-          ../mesh_augmentator.py
+          ./../mesh_augmentator.py
         if-no-files-found: ignore
