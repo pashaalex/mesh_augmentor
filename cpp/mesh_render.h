@@ -1,5 +1,16 @@
 #pragma once
-#define FORWARD_TRACER_API __declspec(dllexport)
+#ifndef MESH_RENDER_H
+#define MESH_RENDER_H
+
+#ifdef _WIN32
+    #ifdef BUILD_DLL
+        #define FORWARD_TRACER_API __declspec(dllexport)
+    #else
+        #define FORWARD_TRACER_API __declspec(dllimport)
+    #endif
+#else
+    #define FORWARD_TRACER_API
+#endif
 
     typedef struct {
         float x, y, z;
@@ -53,3 +64,4 @@
     extern "C" FORWARD_TRACER_API void delete_mesh(Mesh* mesh);
 
     
+#endif // MESH_RENDER_H
