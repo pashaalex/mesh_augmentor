@@ -1,5 +1,6 @@
 import cv2
 import imageio
+import imageio.v3 as iio
 import numpy as np
 import math
 from mesh_augmentator import MeshModel
@@ -39,7 +40,7 @@ def render_depth(sample, background, rects):
     for c in range(1, l):
         frames.append(np.copy(frames[l - c]))
 
-    imageio.mimsave('depth.gif', frames, duration=300)
+    iio.imwrite('depth.gif', frames, duration=300, loop=0)
         
 
 def render_light(sample, background_template, rects):
@@ -63,7 +64,7 @@ def render_light(sample, background_template, rects):
     for c in range(1, l):
         frames.append(np.copy(frames[l - c]))
 
-    imageio.mimsave('light.gif', frames, duration=200)
+    iio.imwrite('light.gif', frames, duration=200, loop=0)
 
 def render_shadow(sample, background, rects):
     h, w, dc = sample.shape
@@ -87,7 +88,7 @@ def render_shadow(sample, background, rects):
     for c in range(1, l):
         frames.append(np.copy(frames[l - c]))
 
-    imageio.mimsave("shadow.gif", frames, duration=200)
+    iio.imwrite("shadow.gif", frames, duration=200, loop=0)
         
 def render_light_diameter(sample, background, rects):
     h, w, dc = sample.shape
@@ -112,7 +113,7 @@ def render_light_diameter(sample, background, rects):
     for c in range(1, l):
         frames.append(np.copy(frames[l - c]))
 
-    imageio.mimsave("light_diameter.gif", frames, duration=200)
+    iio.imwrite("light_diameter.gif", frames, duration=200, loop=0)
 
 def render_rotate_and_cylynder(sample, background, rects):
     h, w, dc = sample.shape
@@ -140,7 +141,7 @@ def render_rotate_and_cylynder(sample, background, rects):
     for c in range(1, l):
         frames.append(np.copy(frames[l - c]))
 
-    imageio.mimsave("rotate.gif", frames, duration=200)    
+    iio.imwrite("rotate.gif", frames, duration=200, loop=0)    
 
 #prepare data
 sample = cv2.imread('sample.jpg')
