@@ -29,7 +29,7 @@ jobs:
     - name: Verify installation (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        choco list --local-only
+        choco list -lo
 
     - name: Build library
       run: |
