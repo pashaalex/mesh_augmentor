@@ -24,7 +24,12 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         choco install make
-        choco install mingw-w64
+        choco install mingw
+
+    - name: Verify installation (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco list --local-only
 
     - name: Build library
       run: |
