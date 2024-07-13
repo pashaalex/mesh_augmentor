@@ -36,7 +36,8 @@ jobs:
       with:
         name: mesh_render-library-${{ matrix.os }}
         path: |
-          cpp/libmesh_render.dll
-          cpp/libmesh_render.so
+          cpp/mesh_render.dll
+          cpp/mesh_render.so
           cpp/*.o
+          ../mesh_augmentator.py
         if-no-files-found: ignore
