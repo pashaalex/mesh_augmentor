@@ -25,8 +25,12 @@ jobs:
       run: |
         choco install make
         choco install mingw
-        # Copy libgomp-1.dll to the current directory after installation
-        cp "$(choco info mingw --lo | Select-String -Pattern 'mingw' -Context 0,1).FullName\bin\libgomp-1.dll" .
+
+    - name: Find libgomp-1.dll (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        $mingwPath = (Get-Command g++).Path.Replace('\bin\g++.exe', '')
+        cp "$mingwPath\bin\libgomp-1.dll" .
 
     - name: Build library
       run: |
