@@ -1,10 +1,6 @@
 This project is used to augment paper images based on position, curl, and lighting.
 ```python
 import cv2
-import imageio
-import imageio.v3 as iio
-import numpy as np
-import math
 from mesh_augmentator import MeshModel
 
 output_dim = 224
