@@ -36,6 +36,6 @@ Light diameter change:\
 Shadow:\
 ![Shadow](doc_images/shadow.gif)
 
-Rotate:\
+Rotate and curl:\
 ![Rotate](doc_images/rotate.gif)
 
