@@ -263,7 +263,10 @@ int render(unsigned char* input_image, int input_width, int input_stride, int in
 
             // Send a ray to the lense      
             for (float r = 0; r < R; r = r + 10) // Send a rays into the points located concentric circles
-                for (float ra = 0; ra < 2 * PI_F; ra = ra + PI_F / 5.9f) // each 30 degree
+            {
+                float step = PI_F / 5.9f; // each 30 degree                
+                if (r < 5) step = 2.5 * PI_F; 
+                for (float ra = 0; ra < 2 * PI_F; ra = ra + step)
                 {
                     N = N + 1;
 
@@ -336,6 +339,7 @@ int render(unsigned char* input_image, int input_width, int input_stride, int in
                         }
                     }
                 }
+            }
 
             // set image color
 #pragma omp critical
