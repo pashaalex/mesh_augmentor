@@ -2,6 +2,9 @@ name: Build Library
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*' 
 
 jobs:
   build:
@@ -52,3 +55,52 @@ jobs:
           libgcc_s_seh-1.dll
           libwinpthread-1.dll
         if-no-files-found: ignore
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: mesh_render-library-ubuntu-latest
+        path: ./linux
+    - name: Download artifacts (Windows)
+      uses: actions/download-artifact@v2
+      with:
+        name: mesh_render-library-windows-latest
+        path: ./windows
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset (Linux)
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./linux
+        asset_name: mesh_render-linux.zip
+        asset_content_type: application/zip
+
+    - name: Upload Release Asset (Windows)
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./windows
+        asset_name: mesh_render-windows.zip
+        asset_content_type: application/zip
