@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v*.*.*' 
+      - 'v*.*.*'
 
 jobs:
   build:
@@ -42,7 +42,7 @@ jobs:
         cd cpp
         make
 
-    - name: Archive library
+    - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
         name: mesh_render-library-${{ matrix.os }}
@@ -74,6 +74,16 @@ jobs:
         name: mesh_render-library-windows-latest
         path: ./windows
 
+    - name: Create zip archive (Linux)
+      run: |
+        cd linux
+        zip -r ../mesh_render-linux.zip .
+
+    - name: Create zip archive (Windows)
+      run: |
+        cd windows
+        zip -r ../mesh_render-windows.zip .
+
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
@@ -91,7 +101,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GH_PAT }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./linux
+        asset_path: ./mesh_render-linux.zip
         asset_name: mesh_render-linux.zip
         asset_content_type: application/zip
 
@@ -101,6 +111,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GH_PAT }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./windows
+        asset_path: ./mesh_render-windows.zip
         asset_name: mesh_render-windows.zip
         asset_content_type: application/zip
