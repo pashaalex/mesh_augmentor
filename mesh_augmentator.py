@@ -2,6 +2,7 @@ import ctypes
 from ctypes import Structure, POINTER, c_int, c_float, c_bool, byref
 import cv2
 import numpy as np
+import random
 import os
 import math
 
@@ -64,13 +65,13 @@ mesh_lib.render.argtypes = [
 ]
 
 class MeshModel:
+    F = 50.0
+    film_distance = 66.7
     def __init__(self, wcnt, hcnt, image, use_light_info = True, use_shadow_info = True):
         self.input_image = image
         self.input_height, self.input_width, C = image.shape
         self.input_stride = self.input_width * 3
-        self.F = 50.0
         self.lens_radius = 130.0
-        self.film_distance = 66.7
         self.wcnt = wcnt
         self.hcnt = hcnt
 
@@ -96,7 +97,7 @@ class MeshModel:
         return mesh_lib.render(input_image, input_width, input_stride, input_height, mesh, output_image, output_width, output_stride, output_height, R, L, F)
 
     def get_best_object_distance(self):
-        return 1 / ((1 / self.F) - (1 / self.film_distance))
+        return 1 / ((1 / MeshModel.F) - (1 / MeshModel.film_distance))
 
     def set_light_position(self, x, y, z):
         self.mesh_ptr.contents.light_x = x
@@ -112,7 +113,7 @@ class MeshModel:
     def project_point(self, x, y):
         dst_x = c_float()
         dst_y = c_float()
-        result = mesh_lib.reproject_point(self.mesh_ptr, self.film_distance, x, y, ctypes.byref(dst_x), ctypes.byref(dst_y))
+        result = mesh_lib.reproject_point(self.mesh_ptr, MeshModel.film_distance, x, y, ctypes.byref(dst_x), ctypes.byref(dst_y))
         return (self.output_width / 2) - dst_x.value, (self.output_height / 2) - dst_y.value
         
     def render(self, background_template = None):
@@ -122,8 +123,8 @@ class MeshModel:
         input_image_ptr = self.input_image.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte))
         output_image_ptr = output_image.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte))
 
-        self.render_matrix(input_image_ptr, self.input_width, self.input_stride, self.input_height, self.mesh_ptr, output_image_ptr, self.output_width, output_stride, self.output_height, self.lens_radius, self.film_distance, self.F)
-        img = output_image.reshape((self.output_height, self.output_width, 4))        
+        self.render_matrix(input_image_ptr, self.input_width, self.input_stride, self.input_height, self.mesh_ptr, output_image_ptr, self.output_width, output_stride, self.output_height, self.lens_radius, MeshModel.film_distance, MeshModel.F)
+        img = output_image.reshape((self.output_height, self.output_width, 4))
         mask = img[:,:,3]        
         img = img[:,:,:3]
         if background_template is not None:
@@ -149,7 +150,7 @@ class MeshModel:
         img = cv2.rotate(img, cv2.ROTATE_180)
         return img
 
-    def cylynder_horizintal(self, R = None, dA = 0):
+    def cylynder_horizontal(self, R = None, dA = 0):
         h, w = self.input_height, self.input_width
         dx, dy = w // 2, h // 2
         if R == None: R = w * 3
@@ -177,6 +178,47 @@ class MeshModel:
             point.y += dy
             point.z += dz
 
+    def get_mass_center(self):
+        x = 0
+        y = 0
+        z = 0    
+        for point in self.points:
+            x += point.x
+            y += point.y
+            z += point.z
+
+        return x/len(self.points), y/len(self.points), z/len(self.points)
+
+    def rotate_z(self, a):
+        cx, cy, cz = self.get_mass_center()
+        for point in self.points:
+            translated_x = point.x - cx
+            translated_y = point.y - cy
+            rotated_x = translated_x * math.cos(a) - translated_y * math.sin(a)
+            rotated_y = translated_x * math.sin(a) + translated_y * math.cos(a)
+            point.x = rotated_x + cx
+            point.y = rotated_y + cy
+
+    def rotate_x(self, a):
+        cx, cy, cz = self.get_mass_center()
+        for point in self.points:
+            translated_z = point.z - cz
+            translated_y = point.y - cy
+            rotated_z = translated_z * math.cos(a) - translated_y * math.sin(a)
+            rotated_y = translated_z * math.sin(a) + translated_y * math.cos(a)
+            point.z = rotated_z + cz
+            point.y = rotated_y + cy
+
+    def rotate_y(self, a):
+        cx, cy, cz = self.get_mass_center()
+        for point in self.points:
+            translated_z = point.z - cz
+            translated_x = point.x - cx
+            rotated_x = translated_x * math.cos(a) - translated_z * math.sin(a)
+            rotated_z = translated_x * math.sin(a) + translated_z * math.cos(a)
+            point.x = rotated_x + cx
+            point.z = rotated_z + cz
+
     def rotate(self, a):
         cos_theta = math.cos(a)
         sin_theta = math.sin(a)
@@ -184,9 +226,56 @@ class MeshModel:
             x_new = point.x * cos_theta - point.y * sin_theta
             y_new = point.x * sin_theta + point.y * cos_theta
             point.x = x_new
-            point.y = y_new          
+            point.y = y_new
 
     def free(self):
         mesh_lib.delete_mesh(self.mesh_ptr)
+
+def get_random_augment(image, output_width, output_height, points = [], backgrounds = None, background_fnames = None):
+    if backgrounds is not None and background_fnames is not None:
+        raise Exception("backgrounds and background_fnames can't be not None both")
+    if backgrounds is None and background_fnames is None:
+        raise Exception("backgrounds and background_fnames can't be None both")
+    h, w, dc = image.shape
+
+# calculate best size
+    object_distance = 1 / ((1 / MeshModel.F) - (1 / MeshModel.film_distance))
+    best_width = output_width * object_distance / MeshModel.film_distance
+    best_height = output_height * object_distance / MeshModel.film_distance    
+    k = min(best_height / h, best_width / w) * random.uniform(0.5, 0.9)
+    image = cv2.resize(image, (int(w * k), int(h * k)), interpolation = cv2.INTER_LINEAR)
+    points = [(p[0] * k, p[1] * k) for p in points]
+    h, w, dc = image.shape
+    if background_fnames is not None:
+        background = cv2.imread(random.choice(background_fnames))
+    else:
+        background = random.choice(backgrounds)
+    background = cv2.resize(background, (output_width, output_height), interpolation = cv2.INTER_LINEAR)
+
+#render
+    mesh = MeshModel(50, 50, image, True, True)
+    mesh.lens_radius = 1
+    if random.choice([True, False]):
+        mesh.cylynder_vertical(R = w * random.uniform(4, 20))
+    else:
+        mesh.cylynder_horizontal(R = h * random.uniform(4, 20))
+    mesh.shift(0, 0, mesh.get_best_object_distance())
+    mesh.rotate_y(math.radians(random.uniform(-5, 5)))
+    mesh.rotate_x(math.radians(random.uniform(-5, 5)))
+    mesh.rotate_z(math.radians(random.uniform(-5, 5)))
+    mesh.shift(random.uniform(-5, 5), random.uniform(-5, 5), random.uniform(-5, 5))
+    mesh.set_output_size(output_width, output_height)
+    mesh.set_light_diameter(random.uniform(10.0, 50.0))
+    mesh.set_shadow_y(random.uniform(-80.0, 0.0))
+    output_image = mesh.render(background)
+
+    new_points = []
+    for x, y in points:
+        new_x, new_y = mesh.project_point(x, y)
+        new_points.append((new_x, new_y))
+    
+    mesh.free()
+    return output_image, new_points
+
 
 
