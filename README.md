@@ -1,6 +1,6 @@
 This project is used to augment paper images based on position, curl, and lighting.\
 ![Demo](demo.gif)
-Demo without depth of field\
+<- Demo without depth of field.
 
 # Quick start for augment images
 Prepare data for augment
