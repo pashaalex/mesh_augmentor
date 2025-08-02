@@ -6,6 +6,9 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -14,103 +17,100 @@ jobs:
         os: [ubuntu-latest, windows-latest]
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup build environment (Linux)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential libomp-dev
+      - name: Setup build environment (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libomp-dev
 
-    - name: Setup build environment (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        choco install make
-        choco install mingw
+      - name: Setup build environment (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          choco install -y make
+          choco install -y mingw
+          # Обновить PATH текущей сессии:
+          $env:ChocolateyInstall = (Get-ChildItem Env:ChocolateyInstall).Value
+          Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+          refreshenv
+          g++ --version
+          make --version
 
-    - name: Find and copy necessary DLLs (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        $mingwPath = (Get-Command g++).Path.Replace('\bin\g++.exe', '')
-        cp "$mingwPath\bin\libgomp-1.dll" .
-        cp "$mingwPath\bin\libgcc_s_seh-1.dll" .
-        cp "$mingwPath\bin\libwinpthread-1.dll" .
+      - name: Find and copy necessary DLLs (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          $gpp = (Get-Command g++).Path
+          if (-not $gpp) { throw "g++ not found in PATH" }
+          $mingwRoot = Split-Path (Split-Path $gpp) -Parent  # убрать \bin\g++.exe
+          Copy-Item "$mingwRoot\bin\libgomp-1.dll" -Destination .
+          Copy-Item "$mingwRoot\bin\libgcc_s_seh-1.dll" -Destination .
+          Copy-Item "$mingwRoot\bin\libwinpthread-1.dll" -Destination .
 
-    - name: Build library
-      run: |
-        cd cpp
-        make
+      - name: Build library
+        run: |
+          cd cpp
+          make
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v2
-      with:
-        name: mesh_render-library-${{ matrix.os }}
-        path: |
-          cpp/mesh_render.dll
-          cpp/mesh_render.so
-          cpp/*.o
-          mesh_augmentator.py
-          libgomp-1.dll
-          libgcc_s_seh-1.dll
-          libwinpthread-1.dll
-        if-no-files-found: ignore
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesh_render-library-${{ matrix.os }}
+          path: |
+            cpp/mesh_render.dll
+            cpp/mesh_render.so
+            cpp/*.o
+            mesh_augmentator.py
+            libgomp-1.dll
+            libgcc_s_seh-1.dll
+            libwinpthread-1.dll
+          if-no-files-found: ignore
 
   release:
     needs: build
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Download artifacts
-      uses: actions/download-artifact@v2
-      with:
-        name: mesh_render-library-ubuntu-latest
-        path: ./linux
-    - name: Download artifacts (Windows)
-      uses: actions/download-artifact@v2
-      with:
-        name: mesh_render-library-windows-latest
-        path: ./windows
+      - name: Download artifacts (Linux)
+        uses: actions/download-artifact@v4
+        with:
+          name: mesh_render-library-ubuntu-latest
+          path: ./linux
 
-    - name: Create zip archive (Linux)
-      run: |
-        cd linux
-        zip -r ../mesh_render-linux.zip .
+      - name: Download artifacts (Windows)
+        uses: actions/download-artifact@v4
+        with:
+          name: mesh_render-library-windows-latest
+          path: ./windows
 
-    - name: Create zip archive (Windows)
-      run: |
-        cd windows
-        zip -r ../mesh_render-windows.zip .
+      - name: Ensure zip is available
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
-        draft: false
-        prerelease: false
+      - name: Create zip archive (Linux)
+        run: |
+          cd linux
+          zip -r ../mesh_render-linux.zip .
 
-    - name: Upload Release Asset (Linux)
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./mesh_render-linux.zip
-        asset_name: mesh_render-linux.zip
-        asset_content_type: application/zip
+      - name: Create zip archive (Windows)
+        run: |
+          cd windows
+          zip -r ../mesh_render-windows.zip .
 
-    - name: Upload Release Asset (Windows)
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./mesh_render-windows.zip
-        asset_name: mesh_render-windows.zip
-        asset_content_type: application/zip
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        with:
+          draft: false
+          prerelease: false
+          files: |
+            mesh_render-linux.zip
+            mesh_render-windows.zip
