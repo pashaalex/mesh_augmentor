@@ -55,24 +55,35 @@ Vector3d ray_point_at(Ray* ray, float t) {
 // End Vector algebra
 
 ColorRGB get_pixel_color(const unsigned char* image, int width, int stride, int height, int x, int y) {
-    if (x > 0 && x < width && y > 0 && y < height) {
+    if (x >= 0 && x < width && y >= 0 && y < height) {
         int d = stride * y + 3 * x;
         ColorRGB res = { image[d + 0], image[d + 1], image[d + 2] };
         return res;
     }
 
-    return { 0, 0, 0 };
+    ColorRGB zero = { 0, 0, 0 };
+    return zero;
 }
+
 
 ColorRGB get_bilinear_interpolated_color(const unsigned char* image, int width, int stride, int height, float x, float y) {
     if (x < 0 || x >= width - 1 || y < 0 || y >= height - 1) {
-        return { 0, 0, 0 };  
+        ColorRGB zero = { 0, 0, 0 };
+        return zero;
     }
 
+	/*
     int x1 = static_cast<int>(x);
     int y1 = static_cast<int>(y);
     int x2 = x1 + 1;
     int y2 = y1 + 1;
+	*/
+
+    x = std::min(std::max(x, 0.0f), float(width  - 1));
+    y = std::min(std::max(y, 0.0f), float(height - 1));
+    int x1 = int(std::floor(x)), y1 = int(std::floor(y));
+    int x2 = std::min(x1 + 1, width  - 1);
+    int y2 = std::min(y1 + 1, height - 1);
 
     float dx = x - x1;
     float dy = y - y1;
@@ -89,6 +100,8 @@ ColorRGB get_bilinear_interpolated_color(const unsigned char* image, int width, 
 
     return result;
 }
+
+
 
 ColorRGB get_RGB_from_barycentric(unsigned char* input_image, int width, int stride, int height, Triangle triangle, Vector3d barycentricCoordinates) {
 
@@ -167,75 +180,6 @@ Vector3d triangle_get_barycentric_coordinates(Triangle triangle, Vector3d point)
 
 int render(unsigned char* input_image, int input_width, int input_stride, int input_height, Mesh* mesh, unsigned char* output_image, int output_width, int output_stride, int output_height, float R, float L, float F)
 {
-    //{
-    //    std::ofstream outfile;
-    //    outfile.open("test.txt", std::ios_base::app); // append instead of overwrite
-    //    outfile << "W=" << input_width << " H=" << input_height << " S=" << input_stride;
-    //    outfile << "T=" << triangleCount;
-    //    outfile << "W2=" << output_width << " H2=" << output_height << " S2=" << output_stride;
-    //    outfile << " R=" << R << " L=" << L << " F=" << F;
-    //    outfile << " B=" << (BYTE)input_image[0];
-    //} 
-
-    /*
-    {        
-        std::ofstream outfile;
-        outfile.open("test.txt", std::ios_base::app); // append instead of overwrite    
-
-        int triangleId = 0;
-
-        Vector3d p2 = { mesh->triangles[triangleId].v1->x - 5, mesh->triangles[triangleId].v1->y + 5, mesh->triangles[triangleId].v1->z } ;
-        float l = sqrtf(p2.x * p2.x + p2.y * p2.y + p2.z * p2.z);
-        p2.x = p2.x / l;
-        p2.y = p2.y / l;
-        p2.z = p2.z / l;
-        Vector3d p1 = { 0, 0, 0 };
-        Ray ray = { p1, p2 };
-
-        
-        Vector3d intersectionPoint;
-        if (triangle_intersects(mesh->triangles[triangleId], ray, &intersectionPoint) > 0) {
-            Vector3d barycentricCoordinates = triangle_get_barycentric_coordinates(mesh->triangles[triangleId], intersectionPoint);
-
-            Triangle triangle = mesh->triangles[triangleId];
-
-            float newX = barycentricCoordinates.x * triangle.imagePoint0->x +
-                barycentricCoordinates.y * triangle.imagePoint1->x +
-                barycentricCoordinates.z * triangle.imagePoint2->x;
-
-            float newY = barycentricCoordinates.x * triangle.imagePoint0->y +
-                barycentricCoordinates.y * triangle.imagePoint1->y +
-                barycentricCoordinates.z * triangle.imagePoint2->y;
-
-            outfile << "3DC " << intersectionPoint.x << "," << intersectionPoint.y << "," << intersectionPoint.z << "\n";
-            outfile << "newC " << newX << "," << newY << "\n";
-
-            ColorRGB color = get_RGB_from_barycentric(input_image, input_width, input_stride, input_height, mesh->triangles[triangleId], barycentricCoordinates);
-            outfile << "color " << color.r << "," << color.g << "," << color.b << "\n";
-        }
-        else
-        {
-            outfile << "not in";
-        }
-        return 0;
-
-
-        
-        for (int i = 0; i < mesh->triangleCount; i++)
-        {
-            outfile << "T(" << i << ") = [";
-            outfile << "(" << mesh->triangles[i].v0->x << ", " << mesh->triangles[i].v0->y << ", " << mesh->triangles[i].v0->z << ") ";
-            outfile << "(" << mesh->triangles[i].v1->x << ", " << mesh->triangles[i].v1->y << ", " << mesh->triangles[i].v1->z << ") ";
-            outfile << "(" << mesh->triangles[i].v2->x << ", " << mesh->triangles[i].v2->y << ", " << mesh->triangles[i].v2->z << ") ";
-            outfile << "]; \n";
-        }
-    }
-    */
-    
-    
-
-
-
     const float PI_F = 3.14159265358979f;
 
     int dx = output_width / 2;
@@ -265,7 +209,7 @@ int render(unsigned char* input_image, int input_width, int input_stride, int in
             for (float r = 0; r < R; r = r + 10) // Send a rays into the points located concentric circles
             {
                 float step = PI_F / 5.9f; // each 30 degree                
-                if (r < 5) step = 2.5 * PI_F; 
+                if (r < 5) step = 2.5f * PI_F; 
                 for (float ra = 0; ra < 2 * PI_F; ra = ra + step)
                 {
                     N = N + 1;
@@ -305,9 +249,9 @@ int render(unsigned char* input_image, int input_width, int input_stride, int in
                                 Vector3d lightDirection = { mesh->light_x - intersectionPoint.x, mesh->light_y - intersectionPoint.y, mesh->light_z - intersectionPoint.z };
                                 lightDirection = vector_normalize(&lightDirection);
 
-                                float material_r = color.r / 255.0;
-                                float material_g = color.g / 255.0;
-                                float material_b = color.b / 255.0;
+                                float material_r = color.r / 255.0f;
+                                float material_g = color.g / 255.0f;
+                                float material_b = color.b / 255.0f;
 
                                 // Diffuse component
                                 float diff = vector_dot(&normal, &lightDirection);
@@ -329,9 +273,9 @@ int render(unsigned char* input_image, int input_width, int input_stride, int in
 
                                 // Final color
                                 float light = mesh->light_intensivity;
-                                colorR += 255.0 * material_r * light * (diff + 0.5) / 1.5;
-                                colorG += 255.0 * material_g * light * (diff + 0.5) / 1.5;
-                                colorB += 255.0 * material_b * light * (diff + 0.5) / 1.5;
+                                colorR += 255.0f * material_r * light * (diff + 0.5f) / 1.5f;
+                                colorG += 255.0f * material_g * light * (diff + 0.5f) / 1.5f;
+                                colorB += 255.0f * material_b * light * (diff + 0.5f) / 1.5f;
                                 N_image = N_image + 1;
                             }
 
@@ -347,9 +291,11 @@ int render(unsigned char* input_image, int input_width, int input_stride, int in
                 int x2 = x + dx;
                 int y2 = y + dy;
                 int d = output_stride * y2 + x2 * 4;
-                output_image[d + 0] = (unsigned char)(colorR / N_image);
-                output_image[d + 1] = (unsigned char)(colorG / N_image);
-                output_image[d + 2] = (unsigned char)(colorB / N_image);
+                if (N_image > 0) {
+                    output_image[d + 0] = (unsigned char)(colorR / N_image);
+                    output_image[d + 1] = (unsigned char)(colorG / N_image);
+                    output_image[d + 2] = (unsigned char)(colorB / N_image);
+                }
                 output_image[d + 3] = (unsigned char)((255 * N_image) / N);
 
             }
@@ -409,10 +355,12 @@ int get_coord(int x, int y, int w) {
 }
 
 Mesh* create_mesh(int img_width, int img_height, int wcnt, int hcnt) {
-    Mesh* mesh = (Mesh*)malloc(sizeof(Mesh));    
+    Mesh* mesh = (Mesh*)malloc(sizeof(Mesh));
     mesh->triangleCount = wcnt * hcnt * 2;
-    float dx = img_width / (float)wcnt;
-    float dy = img_height / (float)hcnt;
+    float dx = (img_width  - 1) / float(wcnt);
+    float dy = (img_height - 1) / float(hcnt);
+    // float dx = img_width / (float)wcnt;
+    // float dy = img_height / (float)hcnt;
     mesh->pointCount = (hcnt + 1) * (wcnt + 1);
     mesh->points2d = (Vector2d*)malloc(mesh->pointCount * sizeof(Vector2d));
     mesh->points3d = (Vector3d*)malloc(mesh->pointCount * sizeof(Vector3d));
