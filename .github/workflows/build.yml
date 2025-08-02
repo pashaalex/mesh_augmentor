@@ -16,7 +16,7 @@ on:
       - 'v*.*.*'
 
 permissions:
-  contents: write  # нужно для публикации релиза
+  contents: write  # требуется для публикации релиза
 
 jobs:
   build:
@@ -116,15 +116,13 @@ jobs:
 
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
-        env:
-          # достаточно встроенного GITHUB_TOKEN с правами contents: write
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
         with:
+          token: ${{ github.token }}  # использовать встроенный токен Actions
           draft: false
           prerelease: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.prerelease || false }}
-          # Для ручного запуска берём тег из input; для пуша тега берём текущее имя тега
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
           target_commitish: ${{ github.sha }}
+          generate_release_notes: true
           files: |
             mesh_render-linux.zip
             mesh_render-windows.zip
