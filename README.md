@@ -2,6 +2,9 @@
 
 Mesh Augmentor is a tiny image-augmentation library that warps images with a 3D-like mesh and can simulate optics and lighting. It’s designed for tasks like “paper bending”, page curling, lens distortion, and realistic shadows—while keeping a simple Python API.
 
+
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/pashaalex/mesh_augmentor)](https://github.com/pashaalex/mesh_augmentor/releases/latest)
+
 ![Rotate](demo/example_draw_ECG.png)
 
 ## What it can do
