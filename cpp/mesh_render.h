@@ -24,7 +24,6 @@ typedef struct {
     Vector3d origin, direction;
 } Ray;
 
-// Матрица поворота из углов (yaw вокруг Z, pitch вокруг Y, roll вокруг X)
 typedef struct {
     float m[3][3];
 } Mat3;
@@ -54,19 +53,19 @@ typedef struct {
     float light_diameter;
     float shadow_y;
     bool use_bg_shadow;
-    float bg_z; // На каком расстоянии находится поверхность, на которую отбрасывать тень
-    // --- Параметры прямоугольного окклюдера (всегда используем, если use_shadow_info=1) ---
-    float occ_cx, occ_cy, occ_cz;    // центр
-    float occ_w, occ_h;             // ширина/высота
-    float occ_yaw, occ_pitch, occ_roll; // повороты (рад)
-    int   occ_circle_segments;       // аппроксимация круга источника (напр. 32)
-    float camera_tilt_x_rad; // Наклон камеры вокруг OX
-    bool   use_distortion_k1;  // 0=выкл, 1=вкл
-    float k1;                 // коэффициент радиальной дисторсии (k2=k3=0)
-    float dist_norm;          // масштаб нормировки (удобно взять L)
-    float cx, cy;             // оптический центр на матрице (обычно 0,0)
-    float bottom_shadow_koef; // Влияние теней, котрые находятся под листом бумаги (чем больше значение тем более выражены тени)
-    float light_mix_koef; // Влияние освещения на всё изображение. При большой величине влияние больше
+    float bg_z;
+
+    float occ_cx, occ_cy, occ_cz;
+    float occ_w, occ_h;
+    float occ_yaw, occ_pitch, occ_roll;
+    int   occ_circle_segments;
+    float camera_tilt_x_rad;
+    bool   use_distortion_k1;
+    float k1;
+    float dist_norm;
+    float cx, cy;
+    float bottom_shadow_koef;
+    float light_mix_koef;
 } Mesh;
 
 typedef struct {
@@ -76,10 +75,6 @@ typedef struct {
 typedef struct {
     float r, g, b;
 } RgbF;
-
-//Mesh* create_mesh(int img_width, int img_height, int wcnt, int hcnt);
-//int render(unsigned char* input_image, int input_width, int input_stride, int input_height, Mesh* mesh, unsigned char* output_image, int output_width, int output_stride, int output_height, float R, float L, float F);
-//void delete_mesh(Mesh* mesh);
 
 extern "C" FORWARD_TRACER_API int render(unsigned char* input_image,
     int input_width,
@@ -119,7 +114,6 @@ void  delete_bvh(BVH* bvh);
 bool  bvh_intersect(const Mesh* mesh, const BVH* bvh,
     const Ray& ray, int* outTriangleId, Vector3d* outPoint);
 
-// Вариант с угловым весом (cos^power). rays_negative_z = 1 если полусфера "вниз".
 RgbF shade_background_from_plane_weighted(const Mesh* mesh, const BVH* bvh,
     const Ray& ray, float z_plane,
     RgbF base_color,
@@ -127,21 +121,14 @@ RgbF shade_background_from_plane_weighted(const Mesh* mesh, const BVH* bvh,
     float eps,
     int rays_negative_z, float cos_power);
 
-// --- Окклюдер-прямоугольник ---
 typedef struct {
-    Vector3d center;   // центр прямоугольника
-    float width;       // ширина по локальной оси U
-    float height;      // высота по локальной оси V
-    // Повороты в радианах: yaw вокруг Z, pitch вокруг Y, roll вокруг X
+    Vector3d center;
+    float width;
+    float height;
+    // yaw - Z, pitch - Y, roll - X
     float yaw, pitch, roll;
 } RectOccluder;
 
-// Вычислить долю перекрытия дискового источника (0..1)
-// P        — точка на поверхности, которую освещаем
-// lightC   — центр источника (x,y,z) ; предполагаем плоскость z = lightC.z
-// lightR   — радиус источника (light_diameter/2)
-// circleSegments — сколько сторон у аппроксимации диска (напр. 32)
-// Возвращает fraction в [0,1]
 float rect_occluder_coverage_on_disk(const Vector3d* P,
     const RectOccluder* Rocc,
     const Vector3d* lightC,
