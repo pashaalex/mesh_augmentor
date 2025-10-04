@@ -40,8 +40,10 @@ ma = MeshAugmentor(img_width=src.shape[1], img_height=src.shape[0],
 # ma.set_background_shadow(use=True, bg_z=0.0)
 
 # Optional: modify the mesh points directly (paper-like bend)
-P = ma.points3d_numpy(copy=False)  # (N, 3) live view [x,y,z]
-P[:, 2] += 5.0  # lift the sheet a bit
+for index, point in enumerate(ma.points):
+    point.x = point.x + 10
+    point.y = point.y + 10
+    point.z = point.z + 10
 
 # 3) Render requested outputs
 outs = ma.render(src_bgr=src, out_size=(W_out, H_out),
