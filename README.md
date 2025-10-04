@@ -1,92 +1,57 @@
-This project is used to augment paper images based on position, curl, and lighting.\
-![Demo](demo.gif)
-<- Demo without depth of field.
+# Mesh Augmentor
 
-# Quick start for augment images
-Prepare data for augment
+Mesh Augmentor is a tiny image-augmentation library that warps images with a 3D-like mesh and can simulate optics and lighting. It’s designed for tasks like “paper bending”, page curling, lens distortion, and realistic shadows—while keeping a simple Python API.
+
+![Rotate](demo/example_draw_ECG.png)
+
+## What it can do
+
+- **Mesh-driven warps** – bend, tilt, or curve a rectangular grid and render the input image on it.
+- **Lighting & shadows (optional)** – disk light source, soft shadows (incl. background plane) and a rectangular occluder.
+- **Camera & lens** – focal parameters (F/L/R), optional radial distortion (k1), optical center, camera tilt.
+- **Multiple outputs**
+  - **RGB** – rendered color image
+  - **ALPHA** – alpha channel from the renderer
+  - **MASK** – validity mask (`uint8`, 0/255)
+  - **UV map** – backward sampling map `(H, W, 2)` giving, for each output pixel, the `(x, y)` in the source image to sample
+- **Point reprojection** – map source points into output coordinates (useful for keypoints/landmarks).
+- **Fast native core** – cross-platform C/C++ library (`.dll/.so/.dylib`) with a thin Python wrapper.
+
+## Quickstart
+
 ```python
 import cv2
 import numpy as np
-from mesh_augmentator import get_random_augment
-from os import listdir
-from os.path import isfile, join
+from mesh_augmentor import MeshAugmentor
 
-# get any control points to be set on image
-points_src = []
-with open("rects.txt") as file:    
-    for line in [line.rstrip() for line in file]:
-        x, y, w, h = [float(a) for a in line.split(':')[1].split(';')]
-        points_src.append((x, y))
-```
-## In case of many images with background
-```python
-image = cv2.imread('sample.jpg')
-root = 'bgs'
-background_fnames = [join(root, f) for f in listdir(root) if isfile(join(root, f))]
+# 1) Load a source image (BGR, uint8)
+src = cv2.imread("input.png")  # H_src x W_src x 3
 
-# get result image and control points
-image, points = get_random_augment(image, 224, 200, points = points_src, backgrounds = None, background_fnames = background_fnames)
+# 2) Create the mesh and set output size
+H_out, W_out = 480, 640
+grid_w, grid_h = 20, 12  # mesh resolution
+ma = MeshAugmentor(img_width=src.shape[1], img_height=src.shape[0],
+                   grid_w=grid_w, grid_h=grid_h)
 
-# draw control points on result augmented image
-for x, y in points:
-    cv2.circle(image, (int(x), int(y)), radius=3, color=(0, 0, 255), thickness=-1)
-cv2.imwrite('output1.jpg', image)
-```
+# Optional: configure optics / lighting / distortion (examples)
+# ma.set_optics(F=35.0, L=66.7, R=14.0)
+# ma.set_distortion(use=True, k1=-0.5, dist_norm=66.7, cx=0.0, cy=0.0)
+# ma.set_lighting(use=True, x=0, y=0, z=10, intensity=0.6, diameter=170)
+# ma.set_background_shadow(use=True, bg_z=0.0)
 
-## In case of one or more background images in memory
-```python
-image = cv2.imread('sample.jpg')
-blank_image = np.zeros((224, 200, 3), np.uint8)
+# Optional: modify the mesh points directly (paper-like bend)
+P = ma.points3d_numpy(copy=False)  # (N, 3) live view [x,y,z]
+P[:, 2] += 5.0  # lift the sheet a bit
 
-# get result image and control points
-image, points = get_random_augment(image, 224, 200, points = points_src, backgrounds = [blank_image], background_fnames = None)
+# 3) Render requested outputs
+outs = ma.render(src_bgr=src, out_size=(W_out, H_out),
+                 attachments=("rgb", "alpha", "mask", "uv"))
 
-# draw control points on result augmented image
-for x, y in points:
-    cv2.circle(image, (int(x), int(y)), radius=3, color=(0, 0, 255), thickness=-1)
-cv2.imwrite('output2.jpg', image)
-```
+# 4) Use what you need
+rgb  = outs.rgb        # (H_out, W_out, 3) uint8
+alpha = outs.alpha     # (H_out, W_out)    uint8 or None
+mask = outs.mask       # (H_out, W_out)    uint8 or None
+uv   = outs.uv         # (H_out, W_out, 2) float32 or None
 
-# Information about mesh render
-
-```python
-import cv2
-from mesh_augmentator import MeshModel
-
-output_dim = 224
-#prepare data
-sample = cv2.imread('sample.jpg')
-h, w, dc = sample.shape
-k = min(output_dim / h, output_dim / w) * 2.2
-sample = cv2.resize(sample, (int(w * k), int(h * k)), interpolation = cv2.INTER_LINEAR)
-h, w, dc = sample.shape
-background = cv2.imread('wood.jpg')
-background = cv2.resize(background, (output_dim, output_dim), interpolation = cv2.INTER_LINEAR)
-
-#render
-mesh = MeshModel(100, 100, sample, True, True)
-mesh.cylynder_vertical(R = w * 8)
-mesh.shift(0, 0, mesh.get_best_object_distance())
-
-mesh.set_output_size(output_dim, output_dim)
-output_image = mesh.render(background)
-cv2.imwrite("output.jpg", output_image)
-```
-
-
-
-Depth of field:\
-![Depth of field](doc_images/depth.gif)
-
-Light position change:\
-![Light position change](doc_images/light.gif)
-
-Light diameter change:\
-![Light diameter](doc_images/light_diameter.gif)
-
-Shadow:\
-![Shadow](doc_images/shadow.gif)
-
-Rotate and curl:\
-![Rotate](doc_images/rotate.gif)
+cv2.imwrite("output_rgb.png", rgb)
 

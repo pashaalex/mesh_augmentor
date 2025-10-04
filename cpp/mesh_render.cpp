@@ -1,4 +1,5 @@
-﻿#include <stdio.h>
+﻿#include "pch.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <thread>
@@ -6,33 +7,57 @@
 #include <fstream>
 #include "mesh_render.h"
 
+
+#if defined(_MSC_VER)
+  #define FORCE_INLINE __forceinline
+#else
+  #define FORCE_INLINE inline __attribute__((always_inline))
+#endif
 // Begin Vector algebra
 
-Vector3d vector_add(Vector3d a, Vector3d b) {
+RgbF rgbf_from_u8(ColorRGB c) {
+    RgbF o = { (float)c.r, (float)c.g, (float)c.b };
+    return o;
+}
+static ColorRGB rgbf_to_u8(RgbF c) {
+    ColorRGB o;
+    if (c.r < 0) c.r = 0;
+    if (c.r > 255) c.r = 255;
+    if (c.g < 0) c.g = 0;
+    if (c.g > 255) c.g = 255;
+    if (c.b < 0) c.b = 0;
+    if (c.b > 255) c.b = 255;
+    o.r = (unsigned char)(c.r + 0.5f);
+    o.g = (unsigned char)(c.g + 0.5f);
+    o.b = (unsigned char)(c.b + 0.5f);
+    return o;
+}
+
+FORCE_INLINE Vector3d vector_add(Vector3d a, Vector3d b) noexcept {
     Vector3d res = { a.x + b.x, a.y + b.y, a.z + b.z };
     return res;
 }
 
-Vector3d vector_sub(Vector3d* a, Vector3d* b) {
+FORCE_INLINE Vector3d vector_sub(Vector3d* a, Vector3d* b) noexcept {
     Vector3d res = { a->x - b->x, a->y - b->y, a->z - b->z };
     return res;
 }
 
-Vector3d vector_mul(Vector3d a, float scalar) {
+FORCE_INLINE Vector3d vector_mul(Vector3d a, float scalar) noexcept {
     Vector3d res = { a.x * scalar, a.y * scalar, a.z * scalar };
     return res;
 }
 
-float vector_dot(Vector3d* a, Vector3d* b) {
+FORCE_INLINE float vector_dot(Vector3d* a, Vector3d* b) noexcept {
     return a->x * b->x + a->y * b->y + a->z * b->z;
 }
 
-Vector3d vector_cross(Vector3d* a, Vector3d* b) {
+FORCE_INLINE Vector3d vector_cross(Vector3d* a, Vector3d* b) noexcept {
     Vector3d res = { a->y * b->z - a->z * b->y, a->z * b->x - a->x * b->z, a->x * b->y - a->y * b->x };
     return res;
 }
 
-Vector3d vector_normalize(Vector3d* a) {
+FORCE_INLINE Vector3d vector_normalize(Vector3d* a) noexcept {
     float length = sqrtf(vector_dot(a, a));
     Vector3d res = { a->x / length, a->y / length, a->z / length };
     return res;
@@ -48,7 +73,7 @@ Vector3d vector_reflect(Vector3d vector, Vector3d normal) {
     return reflected;
 }
 
-Vector3d ray_point_at(Ray* ray, float t) {
+FORCE_INLINE Vector3d ray_point_at(Ray* ray, float t) noexcept {
     return vector_add(ray->origin, vector_mul(ray->direction, t));
 }
 
@@ -103,7 +128,7 @@ ColorRGB get_bilinear_interpolated_color(const unsigned char* image, int width, 
 
 
 
-ColorRGB get_RGB_from_barycentric(unsigned char* input_image, int width, int stride, int height, Triangle triangle, Vector3d barycentricCoordinates) {
+ColorRGB get_RGB_from_barycentric(unsigned char* input_image, int width, int stride, int height, Triangle triangle, Vector3d barycentricCoordinates, float* textureX, float* textureY) {
 
     float newX = barycentricCoordinates.x * triangle.imagePoint0->x +
         barycentricCoordinates.y * triangle.imagePoint1->x +
@@ -112,6 +137,9 @@ ColorRGB get_RGB_from_barycentric(unsigned char* input_image, int width, int str
     float newY = barycentricCoordinates.x * triangle.imagePoint0->y +
         barycentricCoordinates.y * triangle.imagePoint1->y +
         barycentricCoordinates.z * triangle.imagePoint2->y;
+
+    *textureX = newX;
+    *textureY = newY;
 
     return get_bilinear_interpolated_color(input_image, width, stride, height, newX, newY);
     //return get_pixel_color(input_image, width, stride, height, (int)newX, (int)newY);
@@ -130,29 +158,63 @@ Ray refract_ray_through_lens(Vector3d matrixPoint, Vector3d lensPoint, float F) 
     return res;
 }
 
+// Поворот точки/направления вокруг OX относительно pivot
+static inline Vector3d rotate_x_point(Vector3d p, float ang, Vector3d pivot) {
+    p.x -= pivot.x; p.y -= pivot.y; p.z -= pivot.z;
+    float c = cosf(ang), s = sinf(ang);
+    float y =  c*p.y - s*p.z;
+    float z =  s*p.y + c*p.z;
+    Vector3d r = { p.x + pivot.x, y + pivot.y, z + pivot.z };
+    return r;
+}
+static inline Vector3d rotate_x_dir(Vector3d v, float ang) {
+    float c = cosf(ang), s = sinf(ang);
+    return Vector3d { v.x, c*v.y - s*v.z, s*v.y + c*v.z };
+}
+
+// Обёртка: поворачиваем ТОЛЬКО готовый луч (жёсткий поворот камеры)
+Ray refract_ray_through_lens_tilted(Vector3d matrixPoint,
+                                    Vector3d lensPoint,
+                                    float F,
+                                    float tilt_x_rad)
+{
+    // считаем как раньше, без каких-либо поворотов входов
+    Ray r = refract_ray_through_lens(matrixPoint, lensPoint, F);
+
+    // поворачиваем луч вокруг центра объектива (обычно (0,0,0))
+    Vector3d pivot = {0.0f, 0.0f, 0.0f};
+    r.origin    = rotate_x_point(r.origin,    tilt_x_rad, pivot);
+    r.direction = rotate_x_dir  (r.direction, tilt_x_rad);
+
+    // нормализуем
+    float L = sqrtf(r.direction.x*r.direction.x + r.direction.y*r.direction.y + r.direction.z*r.direction.z);
+    if (L > 0.0f) { r.direction.x/=L; r.direction.y/=L; r.direction.z/=L; }
+    return r;
+}
+
 int triangle_intersects(Triangle triangle, Ray ray, Vector3d* intersectionPoint) {
     Vector3d edge1 = vector_sub(triangle.v1, triangle.v0);
     Vector3d edge2 = vector_sub(triangle.v2, triangle.v0);
     Vector3d h = vector_cross(&ray.direction, &edge2);
-    double a = vector_dot(&edge1, &h);
+    float a = vector_dot(&edge1, &h);
 
     if (a > -1e-6 && a < 1e-6)
         return 0;
 
-    double f = 1.0 / a;
+    float f = 1.0f / a;
     Vector3d s = vector_sub(&ray.origin, triangle.v0);
-    double u = f * vector_dot(&s, &h);
+    float u = f * vector_dot(&s, &h);
 
     if (u < 0.0 || u > 1.0)
         return 0;
 
     Vector3d q = vector_cross(&s, &edge1);
-    double v = f * vector_dot(&ray.direction, &q);
+    float v = f * vector_dot(&ray.direction, &q);
 
     if (v < 0.0 || u + v > 1.0)
         return 0;
 
-    double t = f * vector_dot(&edge2, &q);
+    float t = f * vector_dot(&edge2, &q);
     if (t > 1e-6) {
         *intersectionPoint = ray_point_at(&ray, (float)t);
         return 1;
@@ -178,38 +240,836 @@ Vector3d triangle_get_barycentric_coordinates(Triangle triangle, Vector3d point)
     return res;
 }
 
-int render(unsigned char* input_image, int input_width, int input_stride, int input_height, Mesh* mesh, unsigned char* output_image, int output_width, int output_stride, int output_height, float R, float L, float F)
+
+// =================== Обработка теней ==================
+// ======= Вспомогательная 2D-геометрия для клиппинга =======
+typedef struct { float x, y; } Vec2;
+
+static inline float cross2(Vec2 a, Vec2 b) { return a.x*b.y - a.y*b.x; }
+
+static inline float poly_area(const Vec2* v, int n) {
+    if (n < 3) return 0.0f;
+    double s = 0.0;
+    for (int i = 0, j = n-1; i < n; j = i++) s += (double)v[j].x * v[i].y - (double)v[i].x * v[j].y;
+    float A = (float)(0.5 * s);
+    return (A >= 0 ? A : -A);
+}
+
+// Пересечение отрезков (A,B) и (C,D), возвращает точку на пересечении прямых.
+static Vec2 line_intersect(Vec2 A, Vec2 B, Vec2 C, Vec2 D) {
+    Vec2 r = { B.x - A.x, B.y - A.y };
+    Vec2 s = { D.x - C.x, D.y - C.y };
+    float denom = cross2(r, s);
+    float t = cross2(Vec2{ C.x - A.x, C.y - A.y }, s) / (denom == 0 ? 1e-30f : denom);
+    Vec2 P = { A.x + t * r.x, A.y + t * r.y };
+    return P;
+}
+
+// Sutherland–Hodgman: клиппинг произвольного многоугольника 'subject' выпуклым 'clip'
+static int clip_polygon_convex(const Vec2* subj, int nSubj,
+                               const Vec2* clip, int nClip,
+                               Vec2* out, int outMax)
+{
+    if (nSubj < 3 || nClip < 3) return 0;
+    Vec2 bufA[128], bufB[128];
+    if (nSubj > 128 || nClip > 128 || outMax > 128) { return 0; } // простая защита от переполнения
+
+    int nA = nSubj;
+    for (int i = 0; i < nSubj; ++i) bufA[i] = subj[i];
+
+    for (int c = 0; c < nClip; ++c) {
+        Vec2 C = clip[c];
+        Vec2 D = clip[(c + 1) % nClip];
+        Vec2 e = { D.x - C.x, D.y - C.y };
+
+        int nB = 0;
+        if (nA == 0) return 0;
+
+        Vec2 S = bufA[nA - 1];
+        for (int i = 0; i < nA; ++i) {
+            Vec2 E = bufA[i];
+            Vec2 CS = { S.x - C.x, S.y - C.y };
+            Vec2 CE = { E.x - C.x, E.y - C.y };
+            float inS = cross2(e, CS);
+            float inE = cross2(e, CE);
+            int insideS = (inS >= 0.0f);
+            int insideE = (inE >= 0.0f);
+
+            if (insideE) {
+                if (!insideS) {
+                    Vec2 I = line_intersect(S, E, C, D);
+                    if (nB < 128) bufB[nB++] = I;
+                }
+                if (nB < 128) bufB[nB++] = E;
+            } else if (insideS) {
+                Vec2 I = line_intersect(S, E, C, D);
+                if (nB < 128) bufB[nB++] = I;
+            }
+            S = E;
+        }
+        // переносим
+        nA = nB;
+        for (int i = 0; i < nA; ++i) bufA[i] = bufB[i];
+    }
+
+    if (nA > outMax) nA = outMax;
+    for (int i = 0; i < nA; ++i) out[i] = bufA[i];
+    return nA;
+}
+
+// Аппроксимация круга правильным N-угольником
+static int build_circle_polygon(Vec2 center, float R, int N, Vec2* out, int outMax) {
+    if (N < 3) N = 3;
+    if (N > outMax) N = outMax;
+    const float TWO_PI = 6.28318530718f;
+    for (int i = 0; i < N; ++i) {
+        float a = TWO_PI * (float)i / (float)N;
+        out[i].x = center.x + R * cosf(a);
+        out[i].y = center.y + R * sinf(a);
+    }
+    return N;
+}
+
+// ======= Вращения и углы прямоугольника =======
+
+
+static inline Vector3d mat3_mul_vec3(const Mat3* M, const Vector3d* v) {
+    Vector3d r;
+    r.x = M->m[0][0]*v->x + M->m[0][1]*v->y + M->m[0][2]*v->z;
+    r.y = M->m[1][0]*v->x + M->m[1][1]*v->y + M->m[1][2]*v->z;
+    r.z = M->m[2][0]*v->x + M->m[2][1]*v->y + M->m[2][2]*v->z;
+    return r;
+}
+
+// Порядок: R = Rz(yaw) * Ry(pitch) * Rx(roll)
+static Mat3 mat3_from_euler(float yaw, float pitch, float roll) {
+    float cy = cosf(yaw),   sy = sinf(yaw);
+    float cp = cosf(pitch), sp = sinf(pitch);
+    float cr = cosf(roll),  sr = sinf(roll);
+
+    Mat3 Rz = { { { cy,-sy, 0 }, { sy, cy, 0 }, { 0, 0, 1 } } };
+    Mat3 Ry = { { { cp, 0, sp }, { 0, 1, 0 }, { -sp, 0, cp } } };
+    Mat3 Rx = { { { 1, 0, 0 }, { 0, cr,-sr }, { 0, sr, cr } } };
+
+    // умножим Rz * Ry
+    Mat3 T;
+    for (int i=0;i<3;++i) for (int j=0;j<3;++j) {
+        T.m[i][j] = Rz.m[i][0]*Ry.m[0][j] + Rz.m[i][1]*Ry.m[1][j] + Rz.m[i][2]*Ry.m[2][j];
+    }
+    // и (Rz*Ry)*Rx
+    Mat3 R;
+    for (int i=0;i<3;++i) for (int j=0;j<3;++j) {
+        R.m[i][j] = T.m[i][0]*Rx.m[0][j] + T.m[i][1]*Rx.m[1][j] + T.m[i][2]*Rx.m[2][j];
+    }
+    return R;
+}
+
+// Угловые оси прямоугольника
+static void rect_axes(const RectOccluder* Rocc, Vector3d* U, Vector3d* V, Vector3d* N) {
+    Mat3 R = mat3_from_euler(Rocc->yaw, Rocc->pitch, Rocc->roll);
+    Vector3d ex = {1,0,0}, ey = {0,1,0}, ez = {0,0,1};
+    *U = mat3_mul_vec3(&R, &ex);
+    *V = mat3_mul_vec3(&R, &ey);
+    *N = mat3_mul_vec3(&R, &ez);
+}
+
+// ======= Проекция прямоугольника на плоскость источника (z = lightC.z) из точки P =======
+static int project_rect_to_light_plane(const Vector3d* P,
+                                       const RectOccluder* Rocc,
+                                       float zLight,
+                                       Vec2* out2D, int outMax)
+{
+    Vector3d U, V, N;
+    rect_axes(Rocc, &U, &V, &N);
+
+    float hw = 0.5f * Rocc->width;
+    float hh = 0.5f * Rocc->height;
+
+    // 4 угла прямоугольника в мире
+    Vector3d C = Rocc->center;
+    Vector3d Q[4] = {
+        { C.x + U.x*hw + V.x*hh, C.y + U.y*hw + V.y*hh, C.z + U.z*hw + V.z*hh },
+        { C.x - U.x*hw + V.x*hh, C.y - U.y*hw + V.y*hh, C.z - U.z*hw + V.z*hh },
+        { C.x - U.x*hw - V.x*hh, C.y - U.y*hw - V.y*hh, C.z - U.z*hw - V.z*hh },
+        { C.x + U.x*hw - V.x*hh, C.y + U.y*hw - V.y*hh, C.z + U.z*hw - V.z*hh }
+    };
+
+    // Быстрая проверка: прямоугольник должен быть между P.z и zLight
+    // (если весь прямоугольник по "другую сторону" — окклюзия нулевая)
+    int anyBetween = 0;
+    for (int i=0;i<4;++i) {
+        float a = (P->z - Q[i].z);
+        float b = (zLight - Q[i].z);
+        if (a*b <= 0.0f) { anyBetween = 1; break; } // разные знаки или ноль — потенциально между
+    }
+    if (!anyBetween) return 0;
+
+    // Проецируем каждый угол на плоскость z = zLight вдоль луча из P
+    int n = 0;
+    for (int i=0;i<4;++i) {
+        float denom = (Q[i].z - P->z);
+        if (denom == 0.0f) continue; // луч к этому углу параллелен плоскости
+        float t = (zLight - P->z) / denom; // P + t*(Q - P)
+        // Для корректной "тени" нам нужен t > 0 (плоскость по направлению от P)
+        if (t <= 0.0f) continue;
+        float x = P->x + t * (Q[i].x - P->x);
+        float y = P->y + t * (Q[i].y - P->y);
+        if (n < outMax) out2D[n++] = Vec2{ x, y };
+    }
+    // Если какая-то вершина дала t<=0, в общем случае тень — не просто 4 точки.
+    // Но для обычных конфигураций (окклюдер между P и светом) все 4 дадут t>0.
+    // На всякий случай: если точек < 3 — считаем, что перекрытия нет.
+    return n;
+}
+
+// ======= Главная функция: доля перекрытия диска источника прямоугольником =======
+float rect_occluder_coverage_on_disk(const Vector3d* P,
+                                     const RectOccluder* Rocc,
+                                     const Vector3d* lightC,
+                                     float lightR,
+                                     int circleSegments)
+{
+    if (lightR <= 0.0f) return 0.0f;
+
+    // Проекция прямоугольника на плоскость света
+    Vec2 proj[8];
+    int nProj = project_rect_to_light_plane(P, Rocc, lightC->z, proj, 8);
+    if (nProj < 3) return 0.0f;
+
+    // Аппроксимируем круг источника N-угольником
+    Vec2 circlePoly[64];
+    if (circleSegments > 64) circleSegments = 64;
+    int nCircle = build_circle_polygon(Vec2{ lightC->x, lightC->y }, lightR,
+                                       circleSegments, circlePoly, 64);
+
+    // Площадь круга (точная) для нормировки
+    float lightArea = 3.14159265359f * lightR * lightR;
+
+    // Клиппинг: пересечение проекции прямоугольника с (аппрокс.) диском
+    Vec2 inter[128];
+    int nInter = clip_polygon_convex(proj, nProj, circlePoly, nCircle, inter, 128);
+    if (nInter < 3) return 0.0f;
+
+    float interArea = poly_area(inter, nInter);
+
+    // Нормированная доля перекрытия (ограничим на всякий случай)
+    float occ = interArea / (lightArea > 0 ? lightArea : 1.0f);
+    if (occ < 0.0f) occ = 0.0f;
+    if (occ > 1.0f) occ = 1.0f;
+    return occ;
+}
+
+void mesh_set_rect_occluder(Mesh* m,
+                            float cx, float cy, float cz,
+                            float w, float h,
+                            float yaw, float pitch, float roll,
+                            int circle_segments)
+{
+    m->occ_cx = cx;
+    m->occ_cy = cy;
+    m->occ_cz = cz;
+    m->occ_w = w;
+    m->occ_h  = h;
+    m->occ_yaw = yaw;
+    m->occ_pitch = pitch;
+    m->occ_roll = roll;
+    m->occ_circle_segments = (circle_segments > 2) ? circle_segments : 32;
+}
+static RectOccluder mesh_make_rect_occluder(const Mesh* m) {
+    RectOccluder r;
+    r.center = Vector3d{ m->occ_cx, m->occ_cy, m->occ_cz };
+    r.width  = m->occ_w; r.height = m->occ_h;
+    r.yaw = m->occ_yaw; r.pitch = m->occ_pitch; r.roll = m->occ_roll;
+    return r;
+}
+
+static float mesh_visible_fraction_from_rect(const Mesh* m, const Vector3d* P)
+{
+    Vector3d lightC = { m->light_x, m->light_y, m->light_z };
+    float lightR = m->light_diameter * 0.5f;
+    RectOccluder occ = mesh_make_rect_occluder(m);
+
+    float occ_frac = rect_occluder_coverage_on_disk(P, &occ, &lightC, lightR,
+                          (m->occ_circle_segments > 0) ? m->occ_circle_segments : 32);
+    float visible = 1.0f - occ_frac;
+    if (visible < 0.0f) visible = 0.0f;
+    if (visible > 1.0f) visible = 1.0f;
+    return visible;
+}
+
+// =================== Конец обработки теней ============
+
+// =================== BVH (минимальная реализация) ===================
+struct AABB {
+    Vector3d bmin, bmax;
+};
+
+static FORCE_INLINE AABB aabb_empty() {
+    AABB b; b.bmin = { +INFINITY, +INFINITY, +INFINITY };
+            b.bmax = { -INFINITY, -INFINITY, -INFINITY };
+    return b;
+}
+
+static FORCE_INLINE void aabb_expand(AABB& b, const Vector3d& p) {
+    b.bmin.x = std::min(b.bmin.x, p.x); b.bmin.y = std::min(b.bmin.y, p.y); b.bmin.z = std::min(b.bmin.z, p.z);
+    b.bmax.x = std::max(b.bmax.x, p.x); b.bmax.y = std::max(b.bmax.y, p.y); b.bmax.z = std::max(b.bmax.z, p.z);
+}
+
+static FORCE_INLINE AABB aabb_of_triangle(const Triangle& t) {
+    AABB b = aabb_empty();
+    aabb_expand(b, *t.v0); aabb_expand(b, *t.v1); aabb_expand(b, *t.v2);
+    return b;
+}
+
+static FORCE_INLINE Vector3d tri_centroid(const Triangle& t) {
+    Vector3d c = { (t.v0->x + t.v1->x + t.v2->x) / 3.0f,
+                   (t.v0->y + t.v1->y + t.v2->y) / 3.0f,
+                   (t.v0->z + t.v1->z + t.v2->z) / 3.0f };
+    return c;
+}
+
+// slab-Intersect: возвращает true и tnear/tfar, если есть пересечение луча с AABB
+static FORCE_INLINE bool aabb_intersect(const AABB& b, const Ray& r, float tMax, float& tnear_out) {
+    float tmin = 0.0f, tmax = tMax;
+
+    for (int axis = 0; axis < 3; ++axis) {
+        float ro = (&r.origin.x)[axis];
+        float rd = (&r.direction.x)[axis];
+        float inv = 1.0f / rd;
+
+        float t0 = ((&b.bmin.x)[axis] - ro) * inv;
+        float t1 = ((&b.bmax.x)[axis] - ro) * inv;
+        if (t0 > t1) std::swap(t0, t1);
+
+        tmin = t0 > tmin ? t0 : tmin;
+        tmax = t1 < tmax ? t1 : tmax;
+        if (tmax < tmin) return false;
+    }
+    tnear_out = tmin;
+    return true;
+}
+
+struct BVHNode {
+    AABB bounds;
+    int  left;   // индекс левого дочернего узла или -1 для листа
+    int  right;  // индекс правого дочернего узла или -1 для листа
+    int  start;  // начало диапазона индексов треугольников (для листа)
+    int  count;  // число треугольников в листе
+};
+
+struct BVH {
+    std::vector<BVHNode> nodes;
+    std::vector<int>     triIdx;     // индексы в mesh->triangles
+};
+
+static FORCE_INLINE float get_axis(const Vector3d& v, int axis) {
+    return (axis == 0) ? v.x : (axis == 1) ? v.y : v.z;
+}
+
+// Рекурсивная сборка по медиане центроидов
+static int build_node(BVH& bvh, const Mesh* mesh, int start, int end, int leafSize) {
+    BVHNode node;
+    node.start = start; node.count = end - start;
+    node.left = node.right = -1;
+
+    // Границы узла
+    node.bounds = aabb_empty();
+    for (int i = start; i < end; ++i) {
+        const Triangle& t = mesh->triangles[bvh.triIdx[i]];
+        AABB tb = aabb_of_triangle(t);
+        aabb_expand(node.bounds, tb.bmin);
+        aabb_expand(node.bounds, tb.bmax);
+    }
+
+    int nodeIndex = (int)bvh.nodes.size();
+    bvh.nodes.push_back(node);
+
+    // Лист?
+    if (node.count <= leafSize) {
+        bvh.nodes[nodeIndex] = node;
+        return nodeIndex;
+    }
+
+    // Выбор оси по наибольшему размеру бокса центроидов
+    AABB cb = aabb_empty();
+    for (int i = start; i < end; ++i) {
+        const Triangle& t = mesh->triangles[bvh.triIdx[i]];
+        Vector3d c = tri_centroid(t);
+        aabb_expand(cb, c);
+    }
+    Vector3d ext = { cb.bmax.x - cb.bmin.x, cb.bmax.y - cb.bmin.y, cb.bmax.z - cb.bmin.z };
+    int axis = 0;
+    if (ext.y > ext.x && ext.y >= ext.z) axis = 1;
+    else if (ext.z > ext.x && ext.z >= ext.y) axis = 2;
+
+    float splitPos = (get_axis(cb.bmin, axis) + get_axis(cb.bmax, axis)) * 0.5f;
+
+    // Разделяем по медиане (in-place partition)
+    int mid = start;
+    for (int i = start; i < end; ++i) {
+        const Triangle& t = mesh->triangles[bvh.triIdx[i]];
+        // БЫЛО: if ((&tri_centroid(t).x)[axis] < splitPos) { ... }
+
+        Vector3d c = tri_centroid(t);
+        if (get_axis(c, axis) < splitPos) {
+            std::swap(bvh.triIdx[i], bvh.triIdx[mid]);
+            ++mid;
+        }
+    }
+
+    if (mid == start || mid == end) mid = start + (end - start) / 2; // защита от вырождения
+
+    int L = build_node(bvh, mesh, start, mid, leafSize);
+    int R = build_node(bvh, mesh, mid, end, leafSize);
+
+    bvh.nodes[nodeIndex].left = L;
+    bvh.nodes[nodeIndex].right = R;
+    return nodeIndex;
+}
+
+BVH* build_bvh(const Mesh* mesh) {
+    BVH* bvh = new BVH();
+    bvh->triIdx.resize(mesh->triangleCount);
+    for (int i = 0; i < mesh->triangleCount; ++i) bvh->triIdx[i] = i;
+    build_node(*bvh, mesh, 0, mesh->triangleCount, /*leafSize=*/8);
+    return bvh;
+}
+
+void delete_bvh(BVH* bvh) {
+    delete bvh;
+}
+
+// Поиск ближайшего пересечения (closest hit). Используем ваш triangle_intersects и сравнение по t.
+bool bvh_intersect(const Mesh* mesh, const BVH* bvh,
+                   const Ray& ray, int* outTriangleId, Vector3d* outPoint)
+{
+    if (bvh->nodes.empty()) return false;
+
+    const float INF = 1e30f;
+    float bestT = INF;
+    bool  hit = false;
+    int   hitTri = -1;
+    Vector3d hitPoint = {};
+
+    // Небольшой локальный стек для итеративного обхода
+    int stack[64]; int sp = 0;
+    stack[sp++] = 0;
+
+    while (sp) {
+        int ni = stack[--sp];
+        const BVHNode& n = bvh->nodes[ni];
+
+        float tnear;
+        if (!aabb_intersect(n.bounds, ray, bestT, tnear)) continue;
+
+        if (n.left == -1 && n.right == -1) {
+            // Лист: проверяем треугольники
+            for (int i = 0; i < n.count; ++i) {
+                int triId = bvh->triIdx[n.start + i];
+                Vector3d p;
+                if (triangle_intersects(mesh->triangles[triId], ray, &p)) { // ваш код
+                    // direction у вас нормализован в refract_ray_through_lens, поэтому t можно получить как проекцию. :contentReference[oaicite:9]{index=9}
+                    Vector3d d = vector_sub(&p, (Vector3d*)&ray.origin);
+                    float t = vector_dot(&d, (Vector3d*)&ray.direction);
+                    if (t > 1e-6f && t < bestT) {
+                        bestT = t; hit = true; hitTri = triId; hitPoint = p;
+                    }
+                }
+            }
+        } else {
+            // Внутренний: сначала «ближайший» по tnear
+            float tnearL = 0.f, tnearR = 0.f;
+            bool iL = n.left  >= 0 && aabb_intersect(bvh->nodes[n.left ].bounds, ray, bestT, tnearL);
+            bool iR = n.right >= 0 && aabb_intersect(bvh->nodes[n.right].bounds, ray, bestT, tnearR);
+            if (iL && iR) {
+                // Пушим дальний первым, чтобы ближний обработался раньше
+                if (tnearL > tnearR) { stack[sp++] = n.left;  stack[sp++] = n.right; }
+                else                  { stack[sp++] = n.right; stack[sp++] = n.left;  }
+            } else if (iL) stack[sp++] = n.left;
+              else if (iR) stack[sp++] = n.right;
+        }
+    }
+
+    if (hit) {
+        if (outTriangleId) *outTriangleId = hitTri;
+        if (outPoint)      *outPoint      = hitPoint;
+        return true;
+    }
+    return false;
+}
+// ================= End BVH =================
+
+// ================= Background shadow sampling (plane z = const) =================
+
+static FORCE_INLINE bool intersect_ray_plane_z(const Ray& ray, float z_plane,
+                                               Vector3d* outP, float* outT)
+{
+    float denom = ray.direction.z;
+    if (denom > -1e-12f && denom < 1e-12f) return false;            // параллельно плоскости
+    float t = (z_plane - ray.origin.z) / denom;
+    if (t <= 0.0f) return false;                                     // за лучом «назад»
+    if (outP) {
+        outP->x = ray.origin.x + ray.direction.x * t;
+        outP->y = ray.origin.y + ray.direction.y * t;
+        outP->z = ray.origin.z + ray.direction.z * t;
+    }
+    if (outT) *outT = t;
+    return true;
+}
+
+static inline void rect_axes_from_mesh(const Mesh* m, Vector3d* U, Vector3d* V, Vector3d* N) {
+    Mat3 R = mat3_from_euler(m->occ_yaw, m->occ_pitch, m->occ_roll);
+    Vector3d ex={1,0,0}, ey={0,1,0}, ez={0,0,1};
+    *U = mat3_mul_vec3(&R, &ex);
+    *V = mat3_mul_vec3(&R, &ey);
+    *N = mat3_mul_vec3(&R, &ez);
+}
+// равномерная по площади диска выборка (sunflower)
+static inline Vector3d light_sample_point(int i, int n, const Vector3d* C, float R) {
+    const float GA = 2.39996323f;
+    float r = sqrtf((i + 0.5f) / (float)n) * R;
+    float a = GA * i;
+    return Vector3d{ C->x + r*cosf(a), C->y + r*sinf(a), C->z };
+}
+
+// пересечение отрезка P->S с прямоугольником (ориентированным) из Mesh
+static inline int segment_hits_rect_mesh(const Mesh* m, const Vector3d* P, const Vector3d* S, float eps) {
+    if (m->occ_w <= 0.0f || m->occ_h <= 0.0f) return 0;
+    Vector3d U,V,N; rect_axes_from_mesh(m, &U,&V,&N);
+    Vector3d C = { m->occ_cx, m->occ_cy, m->occ_cz };
+    Vector3d PS = { S->x - P->x, S->y - P->y, S->z - P->z };
+    float denom = PS.x*N.x + PS.y*N.y + PS.z*N.z;
+    if (fabsf(denom) < 1e-8f) return 0;
+    Vector3d CP = { C.x - P->x, C.y - P->y, C.z - P->z };
+    float t = (CP.x*N.x + CP.y*N.y + CP.z*N.z) / denom;
+    if (t <= eps || t >= 1.0f - eps) return 0;
+    Vector3d X = { P->x + PS.x*t, P->y + PS.y*t, P->z + PS.z*t };
+    Vector3d CX = { X.x - C.x, X.y - C.y, X.z - C.z };
+    float u = CX.x*U.x + CX.y*U.y + CX.z*U.z;
+    float v = CX.x*V.x + CX.y*V.y + CX.z*V.z;
+    float hu = 0.5f*m->occ_w, hv = 0.5f*m->occ_h;
+    return (fabsf(u) <= hu && fabsf(v) <= hv) ? 1 : 0;
+}
+
+// проверка перекрытия геометрией через BVH (по отрезку P->S)
+static inline int segment_blocked_by_bvh(const Mesh* mesh, const BVH* bvh,
+                                         const Vector3d* P, const Vector3d* S, float eps)
+{
+    Vector3d dir = { S->x - P->x, S->y - P->y, S->z - P->z };
+    float dist = sqrtf(dir.x*dir.x + dir.y*dir.y + dir.z*dir.z);
+    if (dist <= 1e-6f) return 0;
+    dir.x /= dist; dir.y /= dist; dir.z /= dist;
+
+    Ray r;
+    r.origin   = Vector3d{ P->x + dir.x*eps, P->y + dir.y*eps, P->z + dir.z*eps };
+    r.direction = dir;
+
+    int triId; Vector3d hit;
+    if (!bvh_intersect(mesh, bvh, r, &triId, &hit)) return 0;
+
+    Vector3d d = { hit.x - r.origin.x, hit.y - r.origin.y, hit.z - r.origin.z };
+    float t = d.x*dir.x + d.y*dir.y + d.z*dir.z; // dir нормализован
+    return (t > 0.0f && t < dist - eps) ? 1 : 0;
+}
+
+// ================== НОВАЯ ВЕРСИЯ ==================
+RgbF shade_background_from_plane_weighted(const Mesh* mesh, const BVH* bvh,
+                                          const Ray& ray, float z_plane,
+                                          RgbF base_color,
+                                          int samples, float shadow_strength,
+                                          float eps,
+                                          float cos_power)
+{
+    // 1) пересечение луча с плоскостью фона z=z_plane
+    Vector3d P; float tplane;
+    if (!intersect_ray_plane_z(ray, z_plane, &P, &tplane)) {
+        return base_color; // плоскость не видна этим лучом
+    }
+
+    // 2) параметры света
+    Vector3d C = { mesh->light_x, mesh->light_y, mesh->light_z };
+    float R = 0.5f * mesh->light_diameter;
+    int N = (samples > 0) ? samples : 32;
+    if (R <= 0.0f) { R = 0.0f; N = 1; } // точечный источник
+
+    // 3) нормаль фона (к источнику): z-направление в сторону лампы
+    Vector3d n_plane = {0, 0, (mesh->light_z >= z_plane) ? 1.0f : -1.0f};
+
+    // 4) интеграл видимости по диску источника (важностная выборка по косинусу)
+    float sumW = 0.0f, blockedW = 0.0f;
+
+    for (int i = 0; i < N; ++i) {
+        Vector3d S = (R > 0.0f) ? light_sample_point(i, N, &C, R) : C;
+
+        // направление и вес
+        Vector3d L = { S.x - P.x, S.y - P.y, S.z - P.z };
+        float Llen = sqrtf(L.x*L.x + L.y*L.y + L.z*L.z);
+        if (Llen <= 1e-6f) continue;
+        L.x /= Llen; L.y /= Llen; L.z /= Llen;
+
+        float w = L.x*n_plane.x + L.y*n_plane.y + L.z*n_plane.z; // cos(theta)
+        if (w < 0.0f) w = 0.0f;
+        if (cos_power != 1.0f) w = powf(w, cos_power);
+        if (w <= 0.0f) continue;
+
+        // проверка перекрытий: прямоугольник и/или геометрия
+        int blocked = 0;
+        if (mesh->use_shadow_info) {
+            if (segment_hits_rect_mesh(mesh, &P, &S, eps)) blocked = 1;
+            if (!blocked && bvh && mesh->triangleCount > 0) {
+                if (segment_blocked_by_bvh(mesh, bvh, &P, &S, eps)) blocked = 1;
+            }
+        }
+
+        if (blocked) blockedW += w;
+        sumW += w;
+    }
+
+    float vis = (sumW > 0.0f) ? (1.0f - blockedW / sumW) : 0.0f;
+    if (vis < 0.0f) vis = 0.0f;
+    if (vis > 1.0f) vis = 1.0f;
+
+    // 5) итоговый множитель: смесь «ambient» и видимого света, масштаб по интенсивности
+    float factor = ((1.0f - shadow_strength) + shadow_strength * vis) * mesh->light_intensivity;
+    if (factor < 0.0f) factor = 0.0f;
+    if (factor > 1.0f) factor = 1.0f;
+
+    RgbF out = { base_color.r * factor,
+                 base_color.g * factor,
+                 base_color.b * factor };
+    return out;
+}
+
+// ================= End background shadows =================
+
+// ================= Нелинейные искажения ===================
+void mesh_set_radial_k1(Mesh* m, float k1, float dist_norm, float cx, float cy) {
+    m->use_distortion_k1 = 1;
+    m->k1 = k1;
+    m->dist_norm = (dist_norm != 0.0f) ? dist_norm : 1.0f;
+    m->cx = cx; m->cy = cy;
+}
+
+// ---------- Аналитическая инверсия радиальной k1 (Cardano) ----------
+// ---------- Аналитическая инверсия радиальной k1 (Cardano) ----------
+// Решаем: r_d = r * (1 + k1 * r^2)  =>  k1*r^3 + r - r_d = 0
+// r и r_d — в НОРМАЛИЗОВАННЫХ координатах (делим на dist_norm)
+static inline float invert_radial_k1_norm(float rd, float k1) {
+    if (rd <= 0.0f) return 0.0f;
+    if (fabsf(k1) < 1e-12f) return rd;
+
+    // Для k1<0 ограничим rd ниже максимума, чтобы инверсия была корректной
+    if (k1 < 0.0f) {
+        // r_d,max = (2/3)*sqrt(1/(-3*k1))
+        float rd_max = (2.0f / 3.0f) * sqrtf(1.0f / (-3.0f * k1));
+        if (rd >= rd_max) rd = rd_max * 0.9999f;  // мягкий кламп
+    }
+
+    // Приводим к кубике x^3 + p x + q = 0
+    float p = 1.0f / k1;
+    float q = -rd / k1;
+
+    float half_q = 0.5f * q;
+    float third_p = p / 3.0f;
+    float D = half_q * half_q + third_p * third_p * third_p; // дискриминант
+
+    if (D >= 0.0f) {
+        // Единственный действительный корень
+        float sqrtD = sqrtf(D);
+        float A = cbrtf(-half_q + sqrtD);
+        float B = cbrtf(-half_q - sqrtD);
+        float r = A + B;
+        return (r > 0.0f) ? r : rd; // страховка
+    }
+    else {
+        // Три действительных корня — выбираем МЕНЬШИЙ положительный (тот, что до пика)
+        float rho = sqrtf(-third_p);            // >0
+        float phi = acosf(-half_q / (rho * rho * rho)); // 0..pi
+        float t = 2.0f * rho;
+        float r1 = t * cosf(phi / 3.0f);
+        float r2 = t * cosf((phi + 2.0f * 3.1415926535f) / 3.0f);
+        float r3 = t * cosf((phi + 4.0f * 3.1415926535f) / 3.0f);
+
+        // выберем минимальный положительный
+        float r = 1e30f;
+        if (r1 > 0.0f && r1 < r) r = r1;
+        if (r2 > 0.0f && r2 < r) r = r2;
+        if (r3 > 0.0f && r3 < r) r = r3;
+        if (r == 1e30f) r = rd; // если вдруг все <=0 — вернём rd как fallback
+        return r;
+    }
+}
+
+
+// ---------- Прямой проход (ideal -> distorted) для k1 ----------
+static inline void distort_point_k1(const Mesh* m, float x, float y, float* xd, float* yd) {
+    // перенос в центр и нормировка
+    float X = x - m->cx, Y = y - m->cy;
+    float s = (m->dist_norm != 0.0f) ? m->dist_norm : 1.0f;
+    float xn = X / s, yn = Y / s;
+
+    float r2 = xn * xn + yn * yn;
+    float radial = 1.0f + m->k1 * r2;
+
+    float xdn = xn * radial;
+    float ydn = yn * radial;
+
+    *xd = xdn * s + m->cx;
+    *yd = ydn * s + m->cy;
+}
+
+// ---------- Обратный проход (distorted -> ideal) для k1, аналитически ----------
+static inline void undistort_point_k1_closed(const Mesh* m, float xd, float yd, float* x, float* y) {
+    float Xd = xd - m->cx, Yd = yd - m->cy;
+    float s = (m->dist_norm != 0.0f) ? m->dist_norm : 1.0f;
+
+    // нормализуем
+    float xdn = Xd / s, ydn = Yd / s;
+    float rd = sqrtf(xdn * xdn + ydn * ydn);
+    if (rd < 1e-12f) { *x = xd; *y = yd; return; }
+
+    float r = invert_radial_k1_norm(rd, m->k1);   // аналитический радиус без дисторсии
+    float scale = r / rd;
+
+    float xun = xdn * scale;
+    float yun = ydn * scale;
+
+    *x = xun * s + m->cx;
+    *y = yun * s + m->cy;
+}
+
+Ray refract_ray_through_lens_tilted_distorted_k1(Vector3d matrixPoint,
+    Vector3d lensPoint,
+    float F,
+    float tilt_x_rad,
+    const Mesh* mesh)
+{
+    if (mesh && mesh->use_distortion_k1) {
+        float ux, uy;
+        undistort_point_k1_closed(mesh, matrixPoint.x, matrixPoint.y, &ux, &uy);
+        matrixPoint.x = ux;
+        matrixPoint.y = uy;
+    }
+    return refract_ray_through_lens_tilted(matrixPoint, lensPoint, F, tilt_x_rad);
+}
+
+void mesh_auto_set_dist_norm(Mesh* m, float dx, float dy, int imgW, int imgH) {
+    // координаты угла матрицы в её системе (центр кадра = 0,0)
+    float halfW = 0.5f * (imgW - 1) * dx;
+    float halfH = 0.5f * (imgH - 1) * dy;
+    float rmax = sqrtf(halfW * halfW + halfH * halfH); // половина диагонали в тех же единицах, что x,y на матрице
+    m->dist_norm = rmax;    // теперь r≈1 на углах
+    m->cx = 0.0f; m->cy = 0.0f; // если центр кадра в (0,0)
+}
+
+// 1) Вычисляем половину диагонали кадра в ТЕХ ЖЕ единицах, что matrixPoint (у вас — пиксели)
+static inline float image_corner_radius_pixels(int outW, int outH) {
+    float halfW = 0.5f * (outW - 1);
+    float halfH = 0.5f * (outH - 1);
+    return sqrtf(halfW * halfW + halfH * halfH);
+}
+
+// 2) Калибруем dist_norm под текущий k1 (безопасно для k1>0 и k1<0)
+void mesh_calibrate_dist_norm_for_k1(Mesh* m, int outW, int outH) {
+    float r_pix = image_corner_radius_pixels(outW, outH);
+
+    if (m->k1 >= 0.0f) {
+        // подушка: можно нормировать углы к r_d≈1
+        m->dist_norm = r_pix;
+    }
+    else {
+        // бочка: углы должны быть < r_d,max
+        // r_d,max = (2/3)*sqrt(1/(-3*k1))
+        float rd_max = (2.0f / 3.0f) * sqrtf(1.0f / (-3.0f * m->k1));
+        float rd_corner = 0.90f * rd_max;          // 10% запас
+        if (rd_corner < 0.2f) rd_corner = 0.2f;    // на всякий случай не делать совсем крошечным
+        m->dist_norm = r_pix / rd_corner;          // => на углах r_d ≈ rd_corner < rd_max
+    }
+}
+
+void mesh_k1_monotonic_guard(Mesh* m, int outW, int outH) {
+    // после калибровки r_d на углах ≈ rd_corner < rd_max, так что обычно не нужно.
+    // но если хочешь: гарантировать 1 + 3 k1 r_d^2 > 0 на углах (монотонность),
+    // можно чуть смягчить k1.
+    float rd_corner = image_corner_radius_pixels(outW, outH) / (m->dist_norm > 0 ? m->dist_norm : 1.0f);
+    if (1.0f + 3.0f * m->k1 * rd_corner * rd_corner <= 0.0f) {
+        // сдвигаем k1 к границе монотонности с небольшим запасом
+        float k1_min = -1.0f / (3.0f * rd_corner * rd_corner);
+        m->k1 = k1_min + 1e-4f;
+    }
+}
+
+// ================= END Нелинейные искажения ===============
+
+static inline float saturate(float x){ return (x<0.f)?0.f:((x>1.f)?1.f:x); }
+// минимум при 90° = k/(1+k). Для 0.5 выбери k=1
+static inline float diffuse_half_lambert(float ndotl, float k){
+    float d = (ndotl + k) / (1.f + k);
+    return saturate(d);
+}
+
+
+int render(unsigned char* input_image,
+    int input_width,
+    int input_stride,
+    int input_height,
+    Mesh* mesh,
+    unsigned char* output_image,
+    int output_width,
+    int output_stride,
+    int output_height,
+    bool render_mask_image,
+    unsigned char* mask_image,
+    int mask_image_stride,
+    bool render_displacement_map,
+    float* displacement_map,
+    float R,
+    float L,
+    float F)
 {
     const float PI_F = 3.14159265358979f;
 
     int dx = output_width / 2;
     int dy = output_height / 2;
 
+    BVH* bvh = build_bvh(mesh);
+
+    mesh_calibrate_dist_norm_for_k1(mesh, output_width, output_height);
+    mesh_k1_monotonic_guard(mesh, output_width, output_height);
+
+    const float min_k1 = -1.0f / 3.0f;
+    if (mesh->k1 < min_k1) mesh->k1 = min_k1 + 1e-4f;
+
     // float R = 150; // Lens radius
     // float L = 66.66666F; // Distance from mtrix to lense
     // float F = 50; // Focal distance
     // Deph of field is about 200
 
-    bool is_log = false;
-
-
     // For each point in matrix
 #pragma omp parallel for collapse(2)
-    for (int y = -dy; y < dy; y++)
-        for (int x = -dx; x < dx; x++)
+    //for (int y = -dy; y < dy; y++)
+    //    for (int x = -dx; x < dx; x++)
+    for (int j = 0; j < output_height; ++j)
+        for (int i = 0; i < output_width; ++i)
         {
+            float x = i - 0.5f * (output_width - 1);
+            float y = j - 0.5f * (output_height - 1);
+
             int N = 0; // Number of rays from this point
             float N_image = 0; // Number of rays that achieve image
             float colorR = 0;
             float colorG = 0;
             float colorB = 0;
-            float colorA = 0;
 
-            // Send a ray to the lense      
+            float textureX = 0;
+            float textureY = 0;
+            bool rayCrossTriangle = false;
+
+            // Send a ray to the lense
             for (float r = 0; r < R; r = r + 10) // Send a rays into the points located concentric circles
             {
-                float step = PI_F / 5.9f; // each 30 degree                
-                if (r < 5) step = 2.5f * PI_F; 
+                float step = PI_F / 5.9f; // each 30 degree
+                if (r < 5) step = 2.5f * PI_F;
                 for (float ra = 0; ra < 2 * PI_F; ra = ra + step)
                 {
                     N = N + 1;
@@ -217,14 +1077,98 @@ int render(unsigned char* input_image, int input_width, int input_stride, int in
                     float lensX = cosf(ra) * r;
                     float lensY = sinf(ra) * r;
 
-                    Vector3d matrixPoint = { (float)x, (float)y, -(float)L };
+                    Vector3d matrixPoint = { x, y, -L };
                     Vector3d lensPoint = { (float)lensX, (float)lensY, (float)0 };
 
-                    Ray rayAfter = refract_ray_through_lens(matrixPoint, lensPoint, F);
+                     // Ray rayAfter = refract_ray_through_lens(matrixPoint, lensPoint, F);
+                     // Ray rayAfter = refract_ray_through_lens_tilted(matrixPoint, lensPoint, F, mesh->camera_tilt_x_rad);
+                    Ray rayAfter = refract_ray_through_lens_tilted_distorted_k1(matrixPoint, lensPoint, F, mesh->camera_tilt_x_rad, mesh);
 
+                    int triangleId;
+                    Vector3d intersectionPoint;
+                    if (bvh_intersect(mesh, bvh, rayAfter, &triangleId, &intersectionPoint)) {
+                        Vector3d barycentricCoordinates =
+                            triangle_get_barycentric_coordinates(mesh->triangles[triangleId], intersectionPoint);
+
+                        float localTextureX;
+                        float localTextureY;
+                        ColorRGB color = get_RGB_from_barycentric(input_image, input_width, input_stride, input_height,
+                                                                  mesh->triangles[triangleId], barycentricCoordinates, &localTextureX, &localTextureY);
+                        if (r < 1) { // from center of lense
+                            if (render_displacement_map) {
+                                textureX = localTextureX;
+                                textureY = localTextureY;
+                            }
+                            rayCrossTriangle = true;
+                        }
+
+                        if (!mesh->use_light_info) {
+                            colorR += color.r;
+                            colorG += color.g;
+                            colorB += color.b;
+                            N_image = N_image + 1;
+                        } else {
+                            Triangle triangle = mesh->triangles[triangleId];
+                            Vector3d l1 = { triangle.v1->x - triangle.v0->x, triangle.v1->y - triangle.v0->y, triangle.v1->z - triangle.v0->z };
+                            Vector3d l2 = { triangle.v2->x - triangle.v0->x, triangle.v2->y - triangle.v0->y, triangle.v2->z - triangle.v0->z };
+                            Vector3d normal = vector_cross(&l1, &l2); normal = vector_normalize(&normal);
+
+                            Vector3d lightDirection = { mesh->light_x - intersectionPoint.x, mesh->light_y - intersectionPoint.y, mesh->light_z - intersectionPoint.z };
+                            lightDirection = vector_normalize(&lightDirection);
+
+                            float material_r = color.r / 255.0f;
+                            float material_g = color.g / 255.0f;
+                            float material_b = color.b / 255.0f;
+
+                            float diff = vector_dot(&normal, &lightDirection); if (diff < 0) diff = -diff;
+                            float base = diffuse_half_lambert(diff, 0.1f);
+                            diff = powf(base, 0.2f);
+
+                            if (mesh->use_shadow_info) {
+                                float visible_frac = mesh_visible_fraction_from_rect(mesh, &intersectionPoint);
+                                diff *= visible_frac;  // масштабируем освещённость видимой долей источника
+                            }
+
+                            float light = mesh->light_intensivity;
+                            float c = 255.0f * ((1.0f - mesh->light_mix_koef) + mesh->light_mix_koef * light * (diff + 0.5f) / 1.5f);
+                            colorR += material_r * c;
+                            colorG += material_g * c;
+                            colorB += material_b * c;
+                            N_image = N_image + 1;
+                        }
+                    } else {
+                        // Луч не пересёкся ни с одним треугольником
+                        if (mesh->use_bg_shadow){
+                            float z_plane = mesh->bg_z;
+
+                            //int xt = x + dx;
+                            //int yt = y + dy;
+                            //int dt = output_stride * yt + xt * 4;
+                            int dt = output_stride * j + i * 4;
+                            RgbF base_bg = {(float)output_image[dt + 0], (float)output_image[dt + 1], (float)output_image[dt + 2]};
+
+                            RgbF shaded = shade_background_from_plane_weighted(
+                                mesh, bvh, rayAfter,
+                                z_plane,
+                                base_bg,
+                                16,    // samples
+                                mesh->bottom_shadow_koef,  // 0..1, насколько «влияет» тень
+                                1e-3f, // eps
+                                1.0f   // cos_power
+                            );
+
+                            colorR += shaded.r;
+                            colorG += shaded.g;
+                            colorB += shaded.b;
+                            N_image = N_image + 1;
+                        }
+                    }
+
+
+/*
                     for (int triangleId = 0; triangleId < mesh->triangleCount; triangleId++)
                     {
-                        Vector3d intersectionPoint; 
+                        Vector3d intersectionPoint;
                         if (triangle_intersects(mesh->triangles[triangleId], rayAfter, &intersectionPoint) > 0) {
                             Vector3d barycentricCoordinates = triangle_get_barycentric_coordinates(mesh->triangles[triangleId], intersectionPoint);
 
@@ -242,7 +1186,7 @@ int render(unsigned char* input_image, int input_width, int input_stride, int in
                                 // use light info
                                 Triangle triangle = mesh->triangles[triangleId];
                                 Vector3d l1 = { triangle.v1->x - triangle.v0->x, triangle.v1->y - triangle.v0->y, triangle.v1->z - triangle.v0->z };
-                                Vector3d l2 = { triangle.v2->x - triangle.v0->x, triangle.v2->y - triangle.v0->y, triangle.v2->z - triangle.v0->z };                                
+                                Vector3d l2 = { triangle.v2->x - triangle.v0->x, triangle.v2->y - triangle.v0->y, triangle.v2->z - triangle.v0->z };
                                 Vector3d normal = vector_cross(&l1, &l2);
                                 normal = vector_normalize(&normal);
 
@@ -282,15 +1226,17 @@ int render(unsigned char* input_image, int input_width, int input_stride, int in
                             break;
                         }
                     }
+                    */
                 }
             }
 
             // set image color
 #pragma omp critical
             {
-                int x2 = x + dx;
-                int y2 = y + dy;
-                int d = output_stride * y2 + x2 * 4;
+                //int x2 = x + dx;
+                //int y2 = y + dy;
+                //int d = output_stride * y2 + x2 * 4;
+                int d = output_stride * j + i * 4;
                 if (N_image > 0) {
                     output_image[d + 0] = (unsigned char)(colorR / N_image);
                     output_image[d + 1] = (unsigned char)(colorG / N_image);
@@ -298,9 +1244,22 @@ int render(unsigned char* input_image, int input_width, int input_stride, int in
                 }
                 output_image[d + 3] = (unsigned char)((255 * N_image) / N);
 
+                if (render_mask_image) {
+                    if (rayCrossTriangle)
+                        mask_image[mask_image_stride * j + i] = 255;
+                    else
+                        mask_image[mask_image_stride * j + i] = 0;
+                }
+
+                if ((render_displacement_map) && (rayCrossTriangle)) {
+                    d = (output_width * j + i) * 2;
+                    displacement_map[d + 0] = textureX;
+                    displacement_map[d + 1] = textureY;
+                }
             }
         }
-    return 1;
+    delete_bvh(bvh);
+    return 0;
 }
 
 bool compute_barycentric_coordinates(Vector2d p, Vector2d a, Vector2d b, Vector2d c, float& u, float& v, float& w) {
@@ -316,7 +1275,7 @@ bool compute_barycentric_coordinates(Vector2d p, Vector2d a, Vector2d b, Vector2
 
     float denom = d00 * d11 - d01 * d01;
     if (denom == 0) {
-        return false;  
+        return false;
     }
 
     v = (d11 * d20 - d01 * d21) / denom;
@@ -327,7 +1286,54 @@ bool compute_barycentric_coordinates(Vector2d p, Vector2d a, Vector2d b, Vector2
 }
 
 bool reproject_point(Mesh* mesh, float L, float src_x, float src_y, float* dst_x, float* dst_y) {
-    float u, v, w;    
+    float u, v, w;
+    Vector2d point = { src_x, src_y };
+
+    // угол наклона камеры вокруг OX (в радианах)
+    const float tilt = mesh->camera_tilt_x_rad;
+    const float c = cosf(tilt);
+    const float s = sinf(tilt);
+
+    for (int i = 0; i < mesh->triangleCount; ++i) {
+        Triangle& tri = mesh->triangles[i];
+        Vector2d a = *tri.imagePoint0;
+        Vector2d b = *tri.imagePoint1;
+        Vector2d c2 = *tri.imagePoint2;
+
+        if (compute_barycentric_coordinates(point, a, b, c2, u, v, w)) {
+            // мировые координаты точки на поверхности
+            float x = u * tri.v0->x + v * tri.v1->x + w * tri.v2->x;
+            float y = u * tri.v0->y + v * tri.v1->y + w * tri.v2->y;
+            float z = u * tri.v0->z + v * tri.v1->z + w * tri.v2->z;
+
+            // Поворот в камерную систему на -tilt вокруг OX:
+            // (матрица Rx(-θ): x' = x; y' =  cosθ*y + sinθ*z;  z' = -sinθ*y + cosθ*z)
+            float x_cam = x;
+            float y_cam =  c * y + s * z;
+            float z_cam = -s * y + c * z;
+
+            if (fabsf(z_cam) < 1e-6f) return false; // точка в плоскости проекции/за камерой
+
+            float und_x = -x_cam * L / z_cam;
+            float und_y = -y_cam * L / z_cam;
+
+            if (mesh->use_distortion_k1) {
+                float dx, dy;
+                distort_point_k1(mesh, und_x, und_y, &dx, &dy);  // добавляем дисторсию
+                *dst_x = dx;
+                *dst_y = dy;
+            }
+            else {
+                *dst_x = und_x;
+                *dst_y = und_y;
+            }
+            return true;
+        }
+    }
+    return false;
+
+/*
+    float u, v, w;
     Vector2d point = { src_x, src_y };
 
     for (int i = 0; i < mesh->triangleCount; ++i) {
@@ -343,11 +1349,12 @@ bool reproject_point(Mesh* mesh, float L, float src_x, float src_y, float* dst_x
             float z = u * tri.v0->z + v * tri.v1->z + w * tri.v2->z;
 
             *dst_x = -x * L / z;
-            *dst_y = -y * L / z;            
+            *dst_y = -y * L / z;
             return true;
         }
     }
     return false;
+*/
 }
 
 int get_coord(int x, int y, int w) {
@@ -356,6 +1363,9 @@ int get_coord(int x, int y, int w) {
 
 Mesh* create_mesh(int img_width, int img_height, int wcnt, int hcnt) {
     Mesh* mesh = (Mesh*)malloc(sizeof(Mesh));
+    mesh->use_bg_shadow = false;
+    mesh->use_light_info = false;
+    mesh->use_shadow_info = false;
     mesh->triangleCount = wcnt * hcnt * 2;
     float dx = (img_width  - 1) / float(wcnt);
     float dy = (img_height - 1) / float(hcnt);
