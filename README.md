@@ -20,6 +20,9 @@ Mesh Augmentor is a tiny image-augmentation library that warps images with a 3D-
 - **Point reprojection** – map source points into output coordinates (useful for keypoints/landmarks).
 - **Fast native core** – cross-platform C/C++ library (`.dll/.so/.dylib`) with a thin Python wrapper.
 
+## Schema
+![Rotate](docs/diagram.png)
+
 ## Quickstart
 
 ```python
