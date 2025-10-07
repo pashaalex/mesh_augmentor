@@ -501,7 +501,7 @@ class MeshAugmentor:
             C.byref(dx), C.byref(dy)
         )
         
-        return (output_width / 2) - dx.value, (output_height / 2) - dy.value  if ok else None
+        return ((output_width / 2) - dx.value, (output_height / 2) - dy.value) if ok else None
 
     # -------------------------------- lifecycle -------------------------------
 

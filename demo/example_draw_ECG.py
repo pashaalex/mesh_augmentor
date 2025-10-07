@@ -71,8 +71,8 @@ def draw_ecg_pillow(
     grid_shift_y = random.random() * ppm_hr
 
     cross_points = []
-    n_x = int(math.ceil((w_hr - grid_shift_x) / ppm_hr))
-    n_y = int(math.ceil((h_hr - grid_shift_y) / ppm_hr))
+    n_x = int(math.ceil((w_hr - supersample - grid_shift_x) / ppm_hr))
+    n_y = int(math.ceil((h_hr - supersample - grid_shift_y) / ppm_hr))
     for ix in range(0, n_x, 5):
         x_hr = grid_shift_x + ix * ppm_hr
         for iy in range(0, n_y, 5):
