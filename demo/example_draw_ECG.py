@@ -1,12 +1,10 @@
 import math
 import random
-from pathlib import Path
-
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
-import ctypes as C
+
 
 from MeshAugmentor import (
     MeshAugmentor,
@@ -282,7 +280,6 @@ def main():
     plt.show()
 
     cv2.imwrite("ecg_processed.png", rgb)
-    cv2.imwrite("control_points.png", control_points)
     cv2.imwrite("mask.png", mask)
     cv2.imwrite("isolines.png", isolines)
 

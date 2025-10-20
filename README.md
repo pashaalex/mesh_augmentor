@@ -25,10 +25,20 @@ Mesh Augmentor is a tiny image-augmentation library that warps images with a 3D-
 
 ## Quickstart
 
+Before using MeshAugmentor, download the latest release package from  
+[**Releases**](https://github.com/pashaalex/mesh_augmentor/releases/latest)  
+and unpack the ZIP file for your platform (`mesh_render-windows.zip` or `mesh_render-linux.zip`).
+
+After unpacking, you should have the MeshAugmentor.py and cpp folder.
+You can now create your own Python scripts **in the same directory**,  
+importing `MeshAugmentor` directly without any installation.
+
+
+
 ```python
 import cv2
 import numpy as np
-from MeshAugmentor import MeshAugmentor
+from MeshAugmentor import *
 
 # 1) Load a source image (BGR, uint8)
 src = cv2.imread("input.jpg")  # H_src x W_src x 3
@@ -36,23 +46,29 @@ src = cv2.imread("input.jpg")  # H_src x W_src x 3
 # 2) Create the mesh and set output size
 H_out, W_out = 480, 640
 grid_w, grid_h = 20, 12  # mesh resolution
-ma = MeshAugmentor(input_width=src.shape[1], input_height=src.shape[0],
-                   grid_w=grid_w, grid_h=grid_h)
+ma = MeshAugmentor(input_width=src.shape[1],
+                   input_height=src.shape[0],
+                   grid_w=grid_w,
+                   grid_h=grid_h)
 
 # Optional: configure optics / lighting / distortion (examples)
-# ma.set_optics(F=35.0, L=66.7, R=14.0)
-# ma.set_distortion(use=True, k1=-0.5, dist_norm=66.7, cx=0.0, cy=0.0)
-# ma.set_lighting(use=True, x=0, y=0, z=10, intensity=0.6, diameter=170)
-# ma.set_background_shadow(use=True, bg_z=0.0)
+# ma.set_optics(Optics(F=35.0, L=66.7, R=17.0))
+# ma.set_distortion(Distortion(use=True, k1=-0.5, cx=0.0, cy=0.0))
+# ma.set_lighting(Lighting(use=True, x=0, y=0, z=10, intensity=0.6, diameter=170))
+# ma.set_background_shadow(BackgroundShadow(use=True, bg_z=0.0))
 
+distance = ma.optics.get_best_distance()
+ma.cylynder_horizontal(R = 1000)
 # Optional: modify the mesh points directly (paper-like bend)
 for index, point in enumerate(ma.points):
     point.x = point.x + 10
     point.y = point.y + 10
-    point.z = point.z + 10
+    point.z = point.z + distance
 
 # 3) Render requested outputs
-outs = ma.render(src_bgr=src, out_size=(W_out, H_out),
+outs = ma.render(input_image=src,
+                 out_size=(W_out, H_out),
+                 background = np.full((H_out, W_out, 3), (128, 128, 128), dtype=np.uint8),
                  attachments=("rgb", "alpha", "mask", "uv"))
 
 # 4) Use what you need
@@ -61,5 +77,15 @@ alpha = outs.alpha     # (H_out, W_out)    uint8 or None
 mask = outs.mask       # (H_out, W_out)    uint8 or None
 uv   = outs.uv         # (H_out, W_out, 2) float32 or None
 
-cv2.imwrite("output_rgb.png", rgb)
+# 5) Optional: work with keypoints
+# keypoints = []
+# for x in range(1, src.shape[0], 50):
+#     for y in range(1, src.shape[1], 50):
+#         keypoints.append((x, y))
 
+# new_keypoints = [ma.reproject_point(x, y, W_out, H_out) for x, y in keypoints]
+# for x, y in new_keypoints:
+#     cv2.circle(rgb, (int(x), int(y)), radius=2, color=(255,0,0), thickness=-1)
+
+
+cv2.imwrite("output_rgb.png", rgb)

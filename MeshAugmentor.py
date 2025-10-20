@@ -27,7 +27,7 @@ class Optics:
     """Lens/sensor geometry passed to native render()."""
     F: float = 50.0   # lense focal distance 
     L: float = 66.7   # from lense to sensor distance
-    R: float = 130.0  # lens/aperture radius
+    R: float = 17.0  # lens/aperture radius
     def get_best_distance(self):
         return 1 / ((1 / self.F) - (1 / self.L))
 
