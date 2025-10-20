@@ -41,7 +41,7 @@ jobs:
         run: |
           choco install -y make
           choco install -y mingw
-          # Обновить PATH текущей сессии:
+          # Update PATH for current session:
           $env:ChocolateyInstall = (Get-ChildItem Env:ChocolateyInstall).Value
           Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
           refreshenv
@@ -107,11 +107,13 @@ jobs:
       - name: Create zip archive (Linux)
         run: |
           cd linux
+          cp ../MeshAugmentor.py . 
           zip -r ../mesh_render-linux.zip .
 
       - name: Create zip archive (Windows)
         run: |
           cd windows
+          cp ../MeshAugmentor.py . 
           zip -r ../mesh_render-windows.zip .
 
       - name: Create GitHub Release and upload assets

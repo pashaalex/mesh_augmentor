@@ -28,15 +28,15 @@ Mesh Augmentor is a tiny image-augmentation library that warps images with a 3D-
 ```python
 import cv2
 import numpy as np
-from mesh_augmentor import MeshAugmentor
+from MeshAugmentor import MeshAugmentor
 
 # 1) Load a source image (BGR, uint8)
-src = cv2.imread("input.png")  # H_src x W_src x 3
+src = cv2.imread("input.jpg")  # H_src x W_src x 3
 
 # 2) Create the mesh and set output size
 H_out, W_out = 480, 640
 grid_w, grid_h = 20, 12  # mesh resolution
-ma = MeshAugmentor(img_width=src.shape[1], img_height=src.shape[0],
+ma = MeshAugmentor(input_width=src.shape[1], input_height=src.shape[0],
                    grid_w=grid_w, grid_h=grid_h)
 
 # Optional: configure optics / lighting / distortion (examples)
