@@ -4,16 +4,20 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag name for the release (e.g., v1.2.3)'
+        description: 'Tag name for the release (e.g., v0.0.9)'
         required: true
       prerelease:
-        description: 'Mark release as prerelease'
+        description: 'Mark as prerelease'
         type: boolean
         required: false
         default: false
   push:
     tags:
       - 'v*.*.*'
+
+# важно: даёт токену право создавать релизы
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -28,14 +32,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Linux toolchain ---
       - name: Setup build environment (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libomp-dev make
+          sudo apt-get install -y build-essential libomp-dev make zip
 
-      # --- Windows toolchain ---
       - name: Setup build environment (Windows)
         if: matrix.os == 'windows-latest'
         shell: powershell
@@ -43,29 +45,29 @@ jobs:
           choco install -y make
           choco install -y mingw
 
-      # --- Build ---
       - name: Build native library
         run: |
           cd cpp
           make
 
-      # --- Package Linux ---
+      # ---------- Packaging per OS ----------
       - name: Package (Linux)
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           set -eux
           STAGE="dist/linux"
-          mkdir -p "$STAGE/mesh_augmentor/_lib" "$STAGE/mesh_augmentor"
+          mkdir -p "$STAGE/mesh_augmentor_lib" "$STAGE/mesh_augmentor"
 
-          cp cpp/*.so "$STAGE/mesh_augmentor/_lib/"
+          # 1) native libs -> mesh_augmentor_lib
+          cp cpp/*.so "$STAGE/mesh_augmentor_lib/"
 
+          # 2) python package -> mesh_augmentor
           cp mesh_augmentor/__init__.py mesh_augmentor/mesh_augmentor.py mesh_augmentor/deformations.py "$STAGE/mesh_augmentor/"
 
-          cd "$STAGE"
-          zip -r "../../mesh_augmentor-linux.zip" .
+          # 3) final zip in repo root
+          (cd "$STAGE" && zip -r "../../mesh_augmentor-linux.zip" .)
 
-      # --- Package Windows ---
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
         shell: powershell
@@ -73,33 +75,57 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $stage = "dist\\windows"
           New-Item -ItemType Directory -Force -Path "$stage\\mesh_augmentor_lib" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$stage\\mesh_augmentor" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$stage\\mesh_augmentor"     | Out-Null
 
-          Copy-Item "cpp\\*.dll" "$stage\\mesh_augmentor\\_lib\\" -Force
+          # 1) native dll -> mesh_augmentor_lib
+          Copy-Item "cpp\\*.dll" "$stage\\mesh_augmentor_lib\\" -Force
 
+          # 1a) runtime dlls (mingw) -> mesh_augmentor_lib
           $gpp = (Get-Command g++.exe -ErrorAction Stop).Source
           $mingwRoot = Split-Path (Split-Path $gpp) -Parent
           $bins = Join-Path $mingwRoot 'bin'
           foreach ($dll in @('libgomp-1.dll','libgcc_s_seh-1.dll','libwinpthread-1.dll')) {
             $src = Join-Path $bins $dll
-            if (Test-Path $src) { Copy-Item $src "$stage\\mesh_augmentor\\_lib\\" -Force }
+            if (Test-Path $src) { Copy-Item $src "$stage\\mesh_augmentor_lib\\" -Force }
           }
 
+          # 2) python package -> mesh_augmentor
           Copy-Item "mesh_augmentor\\__init__.py","mesh_augmentor\\mesh_augmentor.py","mesh_augmentor\\deformations.py" "$stage\\mesh_augmentor\\" -Force
 
+          # 3) final zip in repo root
           if (Test-Path "mesh_augmentor-windows.zip") { Remove-Item "mesh_augmentor-windows.zip" -Force }
           Compress-Archive -Path "$stage\\*" -DestinationPath "mesh_augmentor-windows.zip" -Force
 
-      - name: Upload build artifacts
+      # Upload each OS archive as a job artifact
+      - name: Upload Linux artifact
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: mesh_augmentor-${{ matrix.os }}
-          path: |
-            mesh_augmentor-linux.zip
-            mesh_augmentor-windows.zip
-          if-no-files-found: ignore
+          name: mesh_augmentor-linux
+          path: mesh_augmentor-linux.zip
 
-      - name: Create GitHub Release and upload assets
+      - name: Upload Windows artifact
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesh_augmentor-windows
+          path: mesh_augmentor-windows.zip
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mesh_augmentor-*
+          merge-multiple: true
+
+      - name: List files
+        run: ls -la
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
@@ -111,3 +137,4 @@ jobs:
           files: |
             mesh_augmentor-linux.zip
             mesh_augmentor-windows.zip
+          overwrite: true
