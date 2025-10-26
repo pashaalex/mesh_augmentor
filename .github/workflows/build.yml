@@ -15,7 +15,6 @@ on:
     tags:
       - 'v*.*.*'
 
-# важно: даёт токену право создавать релизы
 permissions:
   contents: write
 
@@ -50,53 +49,53 @@ jobs:
           cd cpp
           make
 
-      # ---------- Packaging per OS ----------
+      # ---------- Packaging for Linux ----------
       - name: Package (Linux)
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           set -eux
           STAGE="dist/linux"
-          mkdir -p "$STAGE/mesh_augmentor_lib" "$STAGE/mesh_augmentor"
+          mkdir -p "$STAGE/mesh_augmentor/_lib"
 
-          # 1) native libs -> mesh_augmentor_lib
-          cp cpp/*.so "$STAGE/mesh_augmentor_lib/"
+          # 1) Copy native libs into mesh_augmentor/_lib
+          cp cpp/*.so "$STAGE/mesh_augmentor/_lib/"
 
-          # 2) python package -> mesh_augmentor
+          # 2) Copy Python package files
           cp mesh_augmentor/__init__.py mesh_augmentor/mesh_augmentor.py mesh_augmentor/deformations.py "$STAGE/mesh_augmentor/"
 
-          # 3) final zip in repo root
+          # 3) Create final archive
           (cd "$STAGE" && zip -r "../../mesh_augmentor-linux.zip" .)
 
+      # ---------- Packaging for Windows ----------
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $stage = "dist\\windows"
-          New-Item -ItemType Directory -Force -Path "$stage\\mesh_augmentor_lib" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$stage\\mesh_augmentor"     | Out-Null
+          New-Item -ItemType Directory -Force -Path "$stage\\mesh_augmentor\\_lib" | Out-Null
 
-          # 1) native dll -> mesh_augmentor_lib
-          Copy-Item "cpp\\*.dll" "$stage\\mesh_augmentor_lib\\" -Force
+          # 1) Copy native DLLs into mesh_augmentor/_lib
+          Copy-Item "cpp\\*.dll" "$stage\\mesh_augmentor\\_lib\\" -Force
 
-          # 1a) runtime dlls (mingw) -> mesh_augmentor_lib
+          # 2) Copy MinGW runtime DLLs if available
           $gpp = (Get-Command g++.exe -ErrorAction Stop).Source
           $mingwRoot = Split-Path (Split-Path $gpp) -Parent
           $bins = Join-Path $mingwRoot 'bin'
           foreach ($dll in @('libgomp-1.dll','libgcc_s_seh-1.dll','libwinpthread-1.dll')) {
             $src = Join-Path $bins $dll
-            if (Test-Path $src) { Copy-Item $src "$stage\\mesh_augmentor_lib\\" -Force }
+            if (Test-Path $src) { Copy-Item $src "$stage\\mesh_augmentor\\_lib\\" -Force }
           }
 
-          # 2) python package -> mesh_augmentor
+          # 3) Copy Python package files
           Copy-Item "mesh_augmentor\\__init__.py","mesh_augmentor\\mesh_augmentor.py","mesh_augmentor\\deformations.py" "$stage\\mesh_augmentor\\" -Force
 
-          # 3) final zip in repo root
+          # 4) Create final archive
           if (Test-Path "mesh_augmentor-windows.zip") { Remove-Item "mesh_augmentor-windows.zip" -Force }
           Compress-Archive -Path "$stage\\*" -DestinationPath "mesh_augmentor-windows.zip" -Force
 
-      # Upload each OS archive as a job artifact
+      # Upload artifacts for each OS
       - name: Upload Linux artifact
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
