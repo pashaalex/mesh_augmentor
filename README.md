@@ -37,34 +37,49 @@ importing `MeshAugmentor` directly without any installation.
 
 ```python
 import cv2
+import math
 import numpy as np
-from MeshAugmentor import *
+from mesh_augmentor import *
+
+def make_grid_image(size=640, step=10, bg_color=(255, 255, 255), line_color=(180, 180, 180)):
+    img = np.full((size, size, 3), bg_color, dtype=np.uint8)
+    for x in range(0, size, step):
+        cv2.line(img, (x, 0), (x, size-1), line_color, thickness=1, lineType=cv2.LINE_AA)
+    for y in range(0, size, step):
+        cv2.line(img, (0, y), (size-1, y), line_color, thickness=1, lineType=cv2.LINE_AA)
+    return img
 
 # 1) Load a source image (BGR, uint8)
-src = cv2.imread("input.jpg")  # H_src x W_src x 3
+src = make_grid_image()
 
 # 2) Create the mesh and set output size
 H_out, W_out = 480, 640
-grid_w, grid_h = 20, 12  # mesh resolution
+grid_w, grid_h = 10, 30  # mesh resolution
 ma = MeshAugmentor(input_width=src.shape[1],
                    input_height=src.shape[0],
                    grid_w=grid_w,
                    grid_h=grid_h)
 
 # Optional: configure optics / lighting / distortion (examples)
-# ma.set_optics(Optics(F=35.0, L=66.7, R=17.0))
+# ma.set_optics(Optics(F=35.0, L=66.7, R=4.0))
 # ma.set_distortion(Distortion(use=True, k1=-0.5, cx=0.0, cy=0.0))
-# ma.set_lighting(Lighting(use=True, x=0, y=0, z=10, intensity=0.6, diameter=170))
+# ma.set_lighting(Lighting(use=True, x=0, y=0, z=10, intensity=0.99, diameter=10, light_mix_koef=0.99))
 # ma.set_background_shadow(BackgroundShadow(use=True, bg_z=0.0))
 
-distance = ma.optics.get_best_distance()
-ma.cylynder_horizontal(R = 1000)
+cylynder_horizontal(ma, R = 10000)
 # Optional: modify the mesh points directly (paper-like bend)
 for index, point in enumerate(ma.points):
     point.x = point.x + 10
     point.y = point.y + 10
-    point.z = point.z + distance
+    point.z = point.z + 10
 
+ma.shift(10, 10, 10)
+ma.rotate_x(math.radians(2))
+ma.rotate_z(math.radians(2))
+ma.fit_best_geometric(
+        W_out=640,
+        H_out=480,
+        margin = 0.75)
 # 3) Render requested outputs
 outs = ma.render(input_image=src,
                  out_size=(W_out, H_out),
@@ -86,6 +101,5 @@ uv   = outs.uv         # (H_out, W_out, 2) float32 or None
 # new_keypoints = [ma.reproject_point(x, y, W_out, H_out) for x, y in keypoints]
 # for x, y in new_keypoints:
 #     cv2.circle(rgb, (int(x), int(y)), radius=2, color=(255,0,0), thickness=-1)
-
 
 cv2.imwrite("output_rgb.png", rgb)

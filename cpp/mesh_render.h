@@ -51,7 +51,6 @@ typedef struct {
     float light_intensivity;
     bool use_shadow_info;
     float light_diameter;
-    float shadow_y;
     bool use_bg_shadow;
     float bg_z;
 

@@ -1,4 +1,3 @@
-# MeshAugmentor.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +14,6 @@ import numpy as np
 import sys
 import math
 
-
 # --------------------------- Public types & configs ---------------------------
 
 Attachment = Literal["rgb", "alpha", "mask", "uv"]  # requested outputs
@@ -27,7 +25,7 @@ class Optics:
     """Lens/sensor geometry passed to native render()."""
     F: float = 50.0   # lense focal distance 
     L: float = 66.7   # from lense to sensor distance
-    R: float = 17.0  # lens/aperture radius
+    R: float = 10.0   # lens/aperture radius
     def get_best_distance(self):
         return 1 / ((1 / self.F) - (1 / self.L))
 
@@ -50,9 +48,7 @@ class Lighting:
     z: float = -100.0
     intensity: float = 1.0
     diameter: float = 20.0
-    shadow_y: float = 0.0
     light_mix_koef: float = 0.8
-
 
 
 @dataclass
@@ -137,7 +133,6 @@ class Mesh(C.Structure):
         ("light_intensivity", C.c_float),
         ("use_shadow_info", C.c_bool),
         ("light_diameter", C.c_float),
-        ("shadow_y", C.c_float),
         ("use_bg_shadow", C.c_bool),
         ("bg_z", C.c_float),
         # Rect occluder & sampling
@@ -162,7 +157,7 @@ def _load_native(lib_path: Optional[str] = None) -> C.CDLL:
     if lib_path:
         return C.CDLL(lib_path)
     here = Path(__file__).resolve().parent
-    here = here / "cpp"
+    here = here / "_lib"
     names = (
         ["mesh_render.dll"] if sys.platform.startswith("win")
         else ["libmesh_render.dylib"] if sys.platform == "darwin"
@@ -248,6 +243,8 @@ class MeshAugmentor:
     ):
         self._api = _Native(lib_path)
         self._mesh = self._api.dll.create_mesh(int(input_width), int(input_height), int(grid_w), int(grid_h))
+        self.grid_w = int(grid_w)
+        self.grid_h = int(grid_h)
         self.input_width = int(input_width)
         self.input_height = int(input_height)
         if not self._mesh:
@@ -280,7 +277,6 @@ class MeshAugmentor:
         m.light_z = float(self.lighting.z)
         m.light_intensivity = float(self.lighting.intensity)
         m.light_diameter = float(self.lighting.diameter)
-        m.shadow_y = float(self.lighting.shadow_y)
         m.light_mix_koef = float(self.lighting.light_mix_koef)
         # Background shadow
         m.use_bg_shadow = bool(self.bg_shadow.use)
@@ -308,27 +304,7 @@ class MeshAugmentor:
     def set_pose(self, v: CameraPose) -> None:       self.pose = v;      self._apply_configs()
 
     # --------------------------------- distort --------------------------------
-    def cylynder_horizontal(self, R = None, dA = 0):
-        h, w = self.input_height, self.input_width
-        dx, dy = w // 2, h // 2
-        if R == None: R = w * 3
-        A = w / R
-        for point in self.points:
-            Ai = - A / 2 + A * point.x / h + dA
-            point.z = (R - R * math.cos(Ai))
-            point.x = R * math.sin(Ai)
-            point.y -= dy
-
-    def cylynder_vertical(self, R = None, dA = 0):
-        h, w = self.input_height, self.input_width
-        dx, dy = w // 2, h // 2
-        if R == None: R = h * 3
-        A = h / R
-        for point in self.points:
-            Ai = - A / 2 + A * point.y / w + dA
-            point.z = (R - R * math.cos(Ai))
-            point.x -= dx
-            point.y = R * math.sin(Ai)            
+         
 
     def shift(self, dx, dy, dz):
         for point in self.points:            
@@ -376,6 +352,47 @@ class MeshAugmentor:
             rotated_z = translated_x * math.sin(a) + translated_z * math.cos(a)
             point.x = rotated_x + cx
             point.z = rotated_z + cz
+
+    def fit_best_geometric(
+        self,
+        W_out: float,
+        H_out: float,
+        margin: float = 0.95,
+    ):
+        L = float(self.optics.L)
+
+        xs = [p.x for p in self.points]
+        ys = [p.y for p in self.points]
+        zs = [p.z for p in self.points]
+        x_min, x_max = min(xs), max(xs)
+        y_min, y_max = min(ys), max(ys)
+        z_min, z_max = min(zs), max(zs)
+
+        w_scene = (x_max - x_min)
+        h_scene = (y_max - y_min)
+        cx = 0.5 * (x_max + x_min)
+        cy = 0.5 * (y_max + y_min)
+        cz = 0.5 * (z_max + z_min)
+
+        dx, dy = -cx, -cy
+        for p in self.points:
+            p.x += dx; 
+            p.y += dy;
+
+        z_x = L * (w_scene / (W_out * margin))
+        z_y = L * (h_scene / (H_out * margin))
+        z_center = max(z_x, z_y)
+
+        # --- 4) сдвигаем сетку вдоль оси Z так, чтобы её центр оказался на этом расстоянии ---
+        delta_z = z_center - cz
+        for p in self.points:
+            p.z += delta_z
+
+        Dist = z_center
+        F = (L * Dist) / (L + Dist)
+        self.set_optics(self.optics.__class__(F=F, L=L, R=self.optics.R))
+
+        return dict(F=F, L=L, Dist=Dist, z_center=z_center)
 
 
     # --------------------------------- render ---------------------------------
@@ -516,3 +533,4 @@ class MeshAugmentor:
 
     def __exit__(self, exc_type, exc, tb):
         self.close()
+

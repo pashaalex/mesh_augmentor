@@ -5,12 +5,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
 
-
-from MeshAugmentor import (
-    MeshAugmentor,
-    Optics, Distortion, Lighting, BackgroundShadow, RectOccluder, CameraPose,
-    Mesh, Vector3d
-)
+from mesh_augmentor import *
 
 signal = [26,20,12,4,-2,-6,-8,-9,-8,-8,-8,-8,-8,-9,-8,-7,-8,-7,-6,-6,
           -7,-6,-5,-4,-5,-4,-4,-3,-4,-3,-2,-1,-2,-2,0,-1,-2,-2,-1,-2,
@@ -131,7 +126,7 @@ def get_ecg_with_points():
         draw_dotted=False,
         background_color=(244, 244, 244),
         mm_line_color=(147, 148, 252),
-        signal_color=(50, 50, 50),
+        signal_color=(80, 80, 80),
     )
     pad = 8 * 5
     new_points = [(x, y + pad) for x, y in keypoints]
@@ -139,14 +134,12 @@ def get_ecg_with_points():
                              borderType=cv2.BORDER_CONSTANT, value=(255, 255, 255))
     return img, new_points  # RGB
 
-
 # --------------------------- Distortion via MeshAugmentor ---------------------------
-
 def render_distort(input_rgb: np.ndarray, out_width: int, out_height: int, cross_points):
     """Bend the 'paper' like a book page and render with light/shadow/distortion."""
     h, w, _ = input_rgb.shape
 
-    # grid resolution (like old code)
+    # grid resolution
     wcnt = max(4, w // 60)
     hcnt = max(4, h // 64)
 
@@ -155,37 +148,49 @@ def render_distort(input_rgb: np.ndarray, out_width: int, out_height: int, cross
     distortion = Distortion(use=True, k1=-0.5)
     lighting = Lighting(
         use=True,
-        x=0.0,
+        x=40.0,
         y=0.0,
         z=10.0,
-        intensity=0.99,
+        intensity=1.5,
         diameter=170.0,
-        shadow_y=0.0,
-        light_mix_koef=0.5 
+        light_mix_koef=0.9 
     )
 
     z_distance = optics.get_best_distance()
-    bg_shadow = BackgroundShadow(use=True, bg_z=z_distance, bottom_shadow_koef=0.4)
+    bg_shadow = BackgroundShadow(use=True, bg_z=z_distance, bottom_shadow_koef=0.8)
     
     occluder = RectOccluder(use=True, cx=0.0, cy=150.0, cz=60.0, w=240.0, h=340.0,
-                            yaw=math.radians(30.0), pitch=0.0, roll=0.0, circle_segments=32)
+                            yaw=math.radians(30.0), pitch=0.0, roll=0.0, circle_segments=64)
     pose = CameraPose(tilt_x_rad=math.radians(2.0))
 
     # Create mesh
     mesh = MeshAugmentor(
         input_width=w, input_height=h,
         grid_w=wcnt, grid_h=hcnt,
-        optics=optics, distortion=distortion, lighting=lighting,
-        bg_shadow=bg_shadow, occluder=occluder, pose=pose
+        optics=optics, 
+        distortion=distortion, 
+        lighting=lighting,
+        bg_shadow=bg_shadow, 
+        occluder=occluder, 
+        pose=pose
     )
     
+    apply_crumple_with_creases(
+        mesh,
+        K=20,
+        angle_deg_range=(8.0, 24.0),
+        band_px=90,
+        falloff_sigma=18.0,
+        z_jitter_std=0.05,
+        z_scale=0.4
+    )
     # Build profile along X and bend the sheet
     stride = wcnt + 1
     profile_points = book_profile(stride, segment_length = 60)
     for index, point in enumerate(mesh.points):
         x = index % stride
         y = index // stride
-        point.z = z_distance - profile_points[x][1] / 30.0
+        point.z += z_distance - profile_points[x][1] / 30.0
         point.x = -550 - profile_points[x][0]
         point.y = point.y - 350
 

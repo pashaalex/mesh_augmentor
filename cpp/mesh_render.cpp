@@ -1,4 +1,5 @@
-﻿#include <stdio.h>
+﻿#include "pch.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <thread>
@@ -8,9 +9,9 @@
 
 
 #if defined(_MSC_VER)
-  #define FORCE_INLINE __forceinline
+#define FORCE_INLINE __forceinline
 #else
-  #define FORCE_INLINE inline __attribute__((always_inline))
+#define FORCE_INLINE inline __attribute__((always_inline))
 #endif
 // Begin Vector algebra
 
@@ -82,10 +83,10 @@ ColorRGB get_bilinear_interpolated_color(const unsigned char* image, int width, 
         return zero;
     }
 
-    x = std::min(std::max(x, 0.0f), float(width  - 1));
+    x = std::min(std::max(x, 0.0f), float(width - 1));
     y = std::min(std::max(y, 0.0f), float(height - 1));
     int x1 = int(std::floor(x)), y1 = int(std::floor(y));
-    int x2 = std::min(x1 + 1, width  - 1);
+    int x2 = std::min(x1 + 1, width - 1);
     int y2 = std::min(y1 + 1, height - 1);
 
     float dx = x - x1;
@@ -136,29 +137,29 @@ Ray refract_ray_through_lens(Vector3d matrixPoint, Vector3d lensPoint, float F) 
 static inline Vector3d rotate_x_point(Vector3d p, float ang, Vector3d pivot) {
     p.x -= pivot.x; p.y -= pivot.y; p.z -= pivot.z;
     float c = cosf(ang), s = sinf(ang);
-    float y =  c*p.y - s*p.z;
-    float z =  s*p.y + c*p.z;
+    float y = c * p.y - s * p.z;
+    float z = s * p.y + c * p.z;
     Vector3d r = { p.x + pivot.x, y + pivot.y, z + pivot.z };
     return r;
 }
 static inline Vector3d rotate_x_dir(Vector3d v, float ang) {
     float c = cosf(ang), s = sinf(ang);
-    return Vector3d { v.x, c*v.y - s*v.z, s*v.y + c*v.z };
+    return Vector3d{ v.x, c * v.y - s * v.z, s * v.y + c * v.z };
 }
 
 Ray refract_ray_through_lens_tilted(Vector3d matrixPoint,
-                                    Vector3d lensPoint,
-                                    float F,
-                                    float tilt_x_rad)
+    Vector3d lensPoint,
+    float F,
+    float tilt_x_rad)
 {
     Ray r = refract_ray_through_lens(matrixPoint, lensPoint, F);
 
-    Vector3d pivot = {0.0f, 0.0f, 0.0f};
-    r.origin    = rotate_x_point(r.origin,    tilt_x_rad, pivot);
-    r.direction = rotate_x_dir  (r.direction, tilt_x_rad);
+    Vector3d pivot = { 0.0f, 0.0f, 0.0f };
+    r.origin = rotate_x_point(r.origin, tilt_x_rad, pivot);
+    r.direction = rotate_x_dir(r.direction, tilt_x_rad);
 
-    float L = sqrtf(r.direction.x*r.direction.x + r.direction.y*r.direction.y + r.direction.z*r.direction.z);
-    if (L > 0.0f) { r.direction.x/=L; r.direction.y/=L; r.direction.z/=L; }
+    float L = sqrtf(r.direction.x * r.direction.x + r.direction.y * r.direction.y + r.direction.z * r.direction.z);
+    if (L > 0.0f) { r.direction.x /= L; r.direction.y /= L; r.direction.z /= L; }
     return r;
 }
 
@@ -213,12 +214,12 @@ Vector3d triangle_get_barycentric_coordinates(Triangle triangle, Vector3d point)
 // =================== SHADOWS ==================
 typedef struct { float x, y; } Vec2;
 
-static inline float cross2(Vec2 a, Vec2 b) { return a.x*b.y - a.y*b.x; }
+static inline float cross2(Vec2 a, Vec2 b) { return a.x * b.y - a.y * b.x; }
 
 static inline float poly_area(const Vec2* v, int n) {
     if (n < 3) return 0.0f;
     double s = 0.0;
-    for (int i = 0, j = n-1; i < n; j = i++) s += (double)v[j].x * v[i].y - (double)v[i].x * v[j].y;
+    for (int i = 0, j = n - 1; i < n; j = i++) s += (double)v[j].x * v[i].y - (double)v[i].x * v[j].y;
     float A = (float)(0.5 * s);
     return (A >= 0 ? A : -A);
 }
@@ -234,8 +235,8 @@ static Vec2 line_intersect(Vec2 A, Vec2 B, Vec2 C, Vec2 D) {
 
 // Sutherland–Hodgman
 static int clip_polygon_convex(const Vec2* subj, int nSubj,
-                               const Vec2* clip, int nClip,
-                               Vec2* out, int outMax)
+    const Vec2* clip, int nClip,
+    Vec2* out, int outMax)
 {
     if (nSubj < 3 || nClip < 3) return 0;
     Vec2 bufA[128], bufB[128];
@@ -268,7 +269,8 @@ static int clip_polygon_convex(const Vec2* subj, int nSubj,
                     if (nB < 128) bufB[nB++] = I;
                 }
                 if (nB < 128) bufB[nB++] = E;
-            } else if (insideS) {
+            }
+            else if (insideS) {
                 Vec2 I = line_intersect(S, E, C, D);
                 if (nB < 128) bufB[nB++] = I;
             }
@@ -297,17 +299,17 @@ static int build_circle_polygon(Vec2 center, float R, int N, Vec2* out, int outM
 
 static inline Vector3d mat3_mul_vec3(const Mat3* M, const Vector3d* v) {
     Vector3d r;
-    r.x = M->m[0][0]*v->x + M->m[0][1]*v->y + M->m[0][2]*v->z;
-    r.y = M->m[1][0]*v->x + M->m[1][1]*v->y + M->m[1][2]*v->z;
-    r.z = M->m[2][0]*v->x + M->m[2][1]*v->y + M->m[2][2]*v->z;
+    r.x = M->m[0][0] * v->x + M->m[0][1] * v->y + M->m[0][2] * v->z;
+    r.y = M->m[1][0] * v->x + M->m[1][1] * v->y + M->m[1][2] * v->z;
+    r.z = M->m[2][0] * v->x + M->m[2][1] * v->y + M->m[2][2] * v->z;
     return r;
 }
 
 // Order: R = Rz(yaw) * Ry(pitch) * Rx(roll)
 static Mat3 mat3_from_euler(float yaw, float pitch, float roll) {
-    float cy = cosf(yaw),   sy = sinf(yaw);
+    float cy = cosf(yaw), sy = sinf(yaw);
     float cp = cosf(pitch), sp = sinf(pitch);
-    float cr = cosf(roll),  sr = sinf(roll);
+    float cr = cosf(roll), sr = sinf(roll);
 
     Mat3 Rz = { { { cy,-sy, 0 }, { sy, cy, 0 }, { 0, 0, 1 } } };
     Mat3 Ry = { { { cp, 0, sp }, { 0, 1, 0 }, { -sp, 0, cp } } };
@@ -315,29 +317,29 @@ static Mat3 mat3_from_euler(float yaw, float pitch, float roll) {
 
     // Rz * Ry
     Mat3 T;
-    for (int i=0;i<3;++i) for (int j=0;j<3;++j) {
-        T.m[i][j] = Rz.m[i][0]*Ry.m[0][j] + Rz.m[i][1]*Ry.m[1][j] + Rz.m[i][2]*Ry.m[2][j];
+    for (int i = 0;i < 3;++i) for (int j = 0;j < 3;++j) {
+        T.m[i][j] = Rz.m[i][0] * Ry.m[0][j] + Rz.m[i][1] * Ry.m[1][j] + Rz.m[i][2] * Ry.m[2][j];
     }
     // (Rz*Ry)*Rx
     Mat3 R;
-    for (int i=0;i<3;++i) for (int j=0;j<3;++j) {
-        R.m[i][j] = T.m[i][0]*Rx.m[0][j] + T.m[i][1]*Rx.m[1][j] + T.m[i][2]*Rx.m[2][j];
+    for (int i = 0;i < 3;++i) for (int j = 0;j < 3;++j) {
+        R.m[i][j] = T.m[i][0] * Rx.m[0][j] + T.m[i][1] * Rx.m[1][j] + T.m[i][2] * Rx.m[2][j];
     }
     return R;
 }
 
 static void rect_axes(const RectOccluder* Rocc, Vector3d* U, Vector3d* V, Vector3d* N) {
     Mat3 R = mat3_from_euler(Rocc->yaw, Rocc->pitch, Rocc->roll);
-    Vector3d ex = {1,0,0}, ey = {0,1,0}, ez = {0,0,1};
+    Vector3d ex = { 1,0,0 }, ey = { 0,1,0 }, ez = { 0,0,1 };
     *U = mat3_mul_vec3(&R, &ex);
     *V = mat3_mul_vec3(&R, &ey);
     *N = mat3_mul_vec3(&R, &ez);
 }
 
 static int project_rect_to_light_plane(const Vector3d* P,
-                                       const RectOccluder* Rocc,
-                                       float zLight,
-                                       Vec2* out2D, int outMax)
+    const RectOccluder* Rocc,
+    float zLight,
+    Vec2* out2D, int outMax)
 {
     Vector3d U, V, N;
     rect_axes(Rocc, &U, &V, &N);
@@ -347,22 +349,22 @@ static int project_rect_to_light_plane(const Vector3d* P,
 
     Vector3d C = Rocc->center;
     Vector3d Q[4] = {
-        { C.x + U.x*hw + V.x*hh, C.y + U.y*hw + V.y*hh, C.z + U.z*hw + V.z*hh },
-        { C.x - U.x*hw + V.x*hh, C.y - U.y*hw + V.y*hh, C.z - U.z*hw + V.z*hh },
-        { C.x - U.x*hw - V.x*hh, C.y - U.y*hw - V.y*hh, C.z - U.z*hw - V.z*hh },
-        { C.x + U.x*hw - V.x*hh, C.y + U.y*hw - V.y*hh, C.z + U.z*hw - V.z*hh }
+        { C.x + U.x * hw + V.x * hh, C.y + U.y * hw + V.y * hh, C.z + U.z * hw + V.z * hh },
+        { C.x - U.x * hw + V.x * hh, C.y - U.y * hw + V.y * hh, C.z - U.z * hw + V.z * hh },
+        { C.x - U.x * hw - V.x * hh, C.y - U.y * hw - V.y * hh, C.z - U.z * hw - V.z * hh },
+        { C.x + U.x * hw - V.x * hh, C.y + U.y * hw - V.y * hh, C.z + U.z * hw - V.z * hh }
     };
 
     int anyBetween = 0;
-    for (int i=0;i<4;++i) {
+    for (int i = 0;i < 4;++i) {
         float a = (P->z - Q[i].z);
         float b = (zLight - Q[i].z);
-        if (a*b <= 0.0f) { anyBetween = 1; break; }
+        if (a * b <= 0.0f) { anyBetween = 1; break; }
     }
     if (!anyBetween) return 0;
 
     int n = 0;
-    for (int i=0;i<4;++i) {
+    for (int i = 0;i < 4;++i) {
         float denom = (Q[i].z - P->z);
         if (denom == 0.0f) continue;
         float t = (zLight - P->z) / denom; // P + t*(Q - P)
@@ -376,10 +378,10 @@ static int project_rect_to_light_plane(const Vector3d* P,
 }
 
 float rect_occluder_coverage_on_disk(const Vector3d* P,
-                                     const RectOccluder* Rocc,
-                                     const Vector3d* lightC,
-                                     float lightR,
-                                     int circleSegments)
+    const RectOccluder* Rocc,
+    const Vector3d* lightC,
+    float lightR,
+    int circleSegments)
 {
     if (lightR <= 0.0f) return 0.0f;
 
@@ -390,7 +392,7 @@ float rect_occluder_coverage_on_disk(const Vector3d* P,
     Vec2 circlePoly[64];
     if (circleSegments > 64) circleSegments = 64;
     int nCircle = build_circle_polygon(Vec2{ lightC->x, lightC->y }, lightR,
-                                       circleSegments, circlePoly, 64);
+        circleSegments, circlePoly, 64);
 
     float lightArea = 3.14159265359f * lightR * lightR;
 
@@ -407,16 +409,16 @@ float rect_occluder_coverage_on_disk(const Vector3d* P,
 }
 
 void mesh_set_rect_occluder(Mesh* m,
-                            float cx, float cy, float cz,
-                            float w, float h,
-                            float yaw, float pitch, float roll,
-                            int circle_segments)
+    float cx, float cy, float cz,
+    float w, float h,
+    float yaw, float pitch, float roll,
+    int circle_segments)
 {
     m->occ_cx = cx;
     m->occ_cy = cy;
     m->occ_cz = cz;
     m->occ_w = w;
-    m->occ_h  = h;
+    m->occ_h = h;
     m->occ_yaw = yaw;
     m->occ_pitch = pitch;
     m->occ_roll = roll;
@@ -425,7 +427,7 @@ void mesh_set_rect_occluder(Mesh* m,
 static RectOccluder mesh_make_rect_occluder(const Mesh* m) {
     RectOccluder r;
     r.center = Vector3d{ m->occ_cx, m->occ_cy, m->occ_cz };
-    r.width  = m->occ_w; r.height = m->occ_h;
+    r.width = m->occ_w; r.height = m->occ_h;
     r.yaw = m->occ_yaw; r.pitch = m->occ_pitch; r.roll = m->occ_roll;
     return r;
 }
@@ -437,7 +439,7 @@ static float mesh_visible_fraction_from_rect(const Mesh* m, const Vector3d* P)
     RectOccluder occ = mesh_make_rect_occluder(m);
 
     float occ_frac = rect_occluder_coverage_on_disk(P, &occ, &lightC, lightR,
-                          (m->occ_circle_segments > 0) ? m->occ_circle_segments : 32);
+        (m->occ_circle_segments > 0) ? m->occ_circle_segments : 32);
     float visible = 1.0f - occ_frac;
     if (visible < 0.0f) visible = 0.0f;
     if (visible > 1.0f) visible = 1.0f;
@@ -453,7 +455,7 @@ struct AABB {
 
 static FORCE_INLINE AABB aabb_empty() {
     AABB b; b.bmin = { +INFINITY, +INFINITY, +INFINITY };
-            b.bmax = { -INFINITY, -INFINITY, -INFINITY };
+    b.bmax = { -INFINITY, -INFINITY, -INFINITY };
     return b;
 }
 
@@ -580,7 +582,7 @@ void delete_bvh(BVH* bvh) {
 }
 
 bool bvh_intersect(const Mesh* mesh, const BVH* bvh,
-                   const Ray& ray, int* outTriangleId, Vector3d* outPoint)
+    const Ray& ray, int* outTriangleId, Vector3d* outPoint)
 {
     if (bvh->nodes.empty()) return false;
 
@@ -613,21 +615,23 @@ bool bvh_intersect(const Mesh* mesh, const BVH* bvh,
                     }
                 }
             }
-        } else {
+        }
+        else {
             float tnearL = 0.f, tnearR = 0.f;
-            bool iL = n.left  >= 0 && aabb_intersect(bvh->nodes[n.left ].bounds, ray, bestT, tnearL);
+            bool iL = n.left >= 0 && aabb_intersect(bvh->nodes[n.left].bounds, ray, bestT, tnearL);
             bool iR = n.right >= 0 && aabb_intersect(bvh->nodes[n.right].bounds, ray, bestT, tnearR);
             if (iL && iR) {
                 if (tnearL > tnearR) { stack[sp++] = n.left;  stack[sp++] = n.right; }
-                else                  { stack[sp++] = n.right; stack[sp++] = n.left;  }
-            } else if (iL) stack[sp++] = n.left;
-              else if (iR) stack[sp++] = n.right;
+                else { stack[sp++] = n.right; stack[sp++] = n.left; }
+            }
+            else if (iL) stack[sp++] = n.left;
+            else if (iR) stack[sp++] = n.right;
         }
     }
 
     if (hit) {
         if (outTriangleId) *outTriangleId = hitTri;
-        if (outPoint)      *outPoint      = hitPoint;
+        if (outPoint)      *outPoint = hitPoint;
         return true;
     }
     return false;
@@ -637,7 +641,7 @@ bool bvh_intersect(const Mesh* mesh, const BVH* bvh,
 // ================= Background shadow sampling (plane z = const) =================
 
 static FORCE_INLINE bool intersect_ray_plane_z(const Ray& ray, float z_plane,
-                                               Vector3d* outP, float* outT)
+    Vector3d* outP, float* outT)
 {
     float denom = ray.direction.z;
     if (denom > -1e-12f && denom < 1e-12f) return false;
@@ -654,7 +658,7 @@ static FORCE_INLINE bool intersect_ray_plane_z(const Ray& ray, float z_plane,
 
 static inline void rect_axes_from_mesh(const Mesh* m, Vector3d* U, Vector3d* V, Vector3d* N) {
     Mat3 R = mat3_from_euler(m->occ_yaw, m->occ_pitch, m->occ_roll);
-    Vector3d ex={1,0,0}, ey={0,1,0}, ez={0,0,1};
+    Vector3d ex = { 1,0,0 }, ey = { 0,1,0 }, ez = { 0,0,1 };
     *U = mat3_mul_vec3(&R, &ex);
     *V = mat3_mul_vec3(&R, &ey);
     *N = mat3_mul_vec3(&R, &ez);
@@ -664,53 +668,53 @@ static inline Vector3d light_sample_point(int i, int n, const Vector3d* C, float
     const float GA = 2.39996323f;
     float r = sqrtf((i + 0.5f) / (float)n) * R;
     float a = GA * i;
-    return Vector3d{ C->x + r*cosf(a), C->y + r*sinf(a), C->z };
+    return Vector3d{ C->x + r * cosf(a), C->y + r * sinf(a), C->z };
 }
 
 static inline int segment_hits_rect_mesh(const Mesh* m, const Vector3d* P, const Vector3d* S, float eps) {
     if (m->occ_w <= 0.0f || m->occ_h <= 0.0f) return 0;
-    Vector3d U,V,N; rect_axes_from_mesh(m, &U,&V,&N);
+    Vector3d U, V, N; rect_axes_from_mesh(m, &U, &V, &N);
     Vector3d C = { m->occ_cx, m->occ_cy, m->occ_cz };
     Vector3d PS = { S->x - P->x, S->y - P->y, S->z - P->z };
-    float denom = PS.x*N.x + PS.y*N.y + PS.z*N.z;
+    float denom = PS.x * N.x + PS.y * N.y + PS.z * N.z;
     if (fabsf(denom) < 1e-8f) return 0;
     Vector3d CP = { C.x - P->x, C.y - P->y, C.z - P->z };
-    float t = (CP.x*N.x + CP.y*N.y + CP.z*N.z) / denom;
+    float t = (CP.x * N.x + CP.y * N.y + CP.z * N.z) / denom;
     if (t <= eps || t >= 1.0f - eps) return 0;
-    Vector3d X = { P->x + PS.x*t, P->y + PS.y*t, P->z + PS.z*t };
+    Vector3d X = { P->x + PS.x * t, P->y + PS.y * t, P->z + PS.z * t };
     Vector3d CX = { X.x - C.x, X.y - C.y, X.z - C.z };
-    float u = CX.x*U.x + CX.y*U.y + CX.z*U.z;
-    float v = CX.x*V.x + CX.y*V.y + CX.z*V.z;
-    float hu = 0.5f*m->occ_w, hv = 0.5f*m->occ_h;
+    float u = CX.x * U.x + CX.y * U.y + CX.z * U.z;
+    float v = CX.x * V.x + CX.y * V.y + CX.z * V.z;
+    float hu = 0.5f * m->occ_w, hv = 0.5f * m->occ_h;
     return (fabsf(u) <= hu && fabsf(v) <= hv) ? 1 : 0;
 }
 
 static inline int segment_blocked_by_bvh(const Mesh* mesh, const BVH* bvh,
-                                         const Vector3d* P, const Vector3d* S, float eps)
+    const Vector3d* P, const Vector3d* S, float eps)
 {
     Vector3d dir = { S->x - P->x, S->y - P->y, S->z - P->z };
-    float dist = sqrtf(dir.x*dir.x + dir.y*dir.y + dir.z*dir.z);
+    float dist = sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
     if (dist <= 1e-6f) return 0;
     dir.x /= dist; dir.y /= dist; dir.z /= dist;
 
     Ray r;
-    r.origin   = Vector3d{ P->x + dir.x*eps, P->y + dir.y*eps, P->z + dir.z*eps };
+    r.origin = Vector3d{ P->x + dir.x * eps, P->y + dir.y * eps, P->z + dir.z * eps };
     r.direction = dir;
 
     int triId; Vector3d hit;
     if (!bvh_intersect(mesh, bvh, r, &triId, &hit)) return 0;
 
     Vector3d d = { hit.x - r.origin.x, hit.y - r.origin.y, hit.z - r.origin.z };
-    float t = d.x*dir.x + d.y*dir.y + d.z*dir.z;
+    float t = d.x * dir.x + d.y * dir.y + d.z * dir.z;
     return (t > 0.0f && t < dist - eps) ? 1 : 0;
 }
 
 RgbF shade_background_from_plane_weighted(const Mesh* mesh, const BVH* bvh,
-                                          const Ray& ray, float z_plane,
-                                          RgbF base_color,
-                                          int samples, float shadow_strength,
-                                          float eps,
-                                          float cos_power)
+    const Ray& ray, float z_plane,
+    RgbF base_color,
+    int samples, float shadow_strength,
+    float eps,
+    float cos_power)
 {
     Vector3d P; float tplane;
     if (!intersect_ray_plane_z(ray, z_plane, &P, &tplane)) {
@@ -722,7 +726,7 @@ RgbF shade_background_from_plane_weighted(const Mesh* mesh, const BVH* bvh,
     int N = (samples > 0) ? samples : 32;
     if (R <= 0.0f) { R = 0.0f; N = 1; }
 
-    Vector3d n_plane = {0, 0, (mesh->light_z >= z_plane) ? 1.0f : -1.0f};
+    Vector3d n_plane = { 0, 0, (mesh->light_z >= z_plane) ? 1.0f : -1.0f };
 
     float sumW = 0.0f, blockedW = 0.0f;
 
@@ -730,11 +734,11 @@ RgbF shade_background_from_plane_weighted(const Mesh* mesh, const BVH* bvh,
         Vector3d S = (R > 0.0f) ? light_sample_point(i, N, &C, R) : C;
 
         Vector3d L = { S.x - P.x, S.y - P.y, S.z - P.z };
-        float Llen = sqrtf(L.x*L.x + L.y*L.y + L.z*L.z);
+        float Llen = sqrtf(L.x * L.x + L.y * L.y + L.z * L.z);
         if (Llen <= 1e-6f) continue;
         L.x /= Llen; L.y /= Llen; L.z /= Llen;
 
-        float w = L.x*n_plane.x + L.y*n_plane.y + L.z*n_plane.z; // cos(theta)
+        float w = L.x * n_plane.x + L.y * n_plane.y + L.z * n_plane.z; // cos(theta)
         if (w < 0.0f) w = 0.0f;
         if (cos_power != 1.0f) w = powf(w, cos_power);
         if (w <= 0.0f) continue;
@@ -905,12 +909,14 @@ void mesh_k1_monotonic_guard(Mesh* m, int outW, int outH) {
 
 // ================= END Non-linear ===============
 
-static inline float saturate(float x){ return (x<0.f)?0.f:((x>1.f)?1.f:x); }
+static inline float saturate(float x) { return (x < 0.f) ? 0.f : ((x > 1.f) ? 1.f : x); }
 
-static inline float diffuse_half_lambert(float ndotl, float k){
+static inline float diffuse_half_lambert(float ndotl, float k) {
     float d = (ndotl + k) / (1.f + k);
     return saturate(d);
 }
+
+#define CLAMP255(x) ((x) < 0.0f ? 0.0f : ((x) > 255.0f ? 255.0f : (x)))
 
 int render(unsigned char* input_image,
     int input_width,
@@ -990,7 +996,7 @@ int render(unsigned char* input_image,
                         float localTextureX;
                         float localTextureY;
                         ColorRGB color = get_RGB_from_barycentric(input_image, input_width, input_stride, input_height,
-                                                                  mesh->triangles[triangleId], barycentricCoordinates, &localTextureX, &localTextureY);
+                            mesh->triangles[triangleId], barycentricCoordinates, &localTextureX, &localTextureY);
                         if (r < 1) { // from center of lense
                             if (render_displacement_map) {
                                 textureX = localTextureX;
@@ -1005,7 +1011,8 @@ int render(unsigned char* input_image,
                             colorB += color.b;
                             N_image = N_image + 1;
                             alpha_count = alpha_count + 1;
-                        } else {
+                        }
+                        else {
                             Triangle triangle = mesh->triangles[triangleId];
                             Vector3d l1 = { triangle.v1->x - triangle.v0->x, triangle.v1->y - triangle.v0->y, triangle.v1->z - triangle.v0->z };
                             Vector3d l2 = { triangle.v2->x - triangle.v0->x, triangle.v2->y - triangle.v0->y, triangle.v2->z - triangle.v0->z };
@@ -1019,8 +1026,11 @@ int render(unsigned char* input_image,
                             float material_b = color.b / 255.0f;
 
                             float diff = vector_dot(&normal, &lightDirection); if (diff < 0) diff = -diff;
+                            //float base = diffuse_half_lambert(diff, 0.1f);
+                            //diff = powf(base, 0.2f);
                             float base = diffuse_half_lambert(diff, 0.1f);
-                            diff = powf(base, 0.2f);
+                            diff = powf(base, 0.5f);
+
 
                             if (mesh->use_shadow_info) {
                                 float visible_frac = mesh_visible_fraction_from_rect(mesh, &intersectionPoint);
@@ -1029,19 +1039,20 @@ int render(unsigned char* input_image,
 
                             float light = mesh->light_intensivity;
                             float c = 255.0f * ((1.0f - mesh->light_mix_koef) + mesh->light_mix_koef * light * (diff + 0.5f) / 1.5f);
-                            colorR += material_r * c;
-                            colorG += material_g * c;
-                            colorB += material_b * c;
+                            colorR += CLAMP255(material_r * c);
+                            colorG += CLAMP255(material_g * c);
+                            colorB += CLAMP255(material_b * c);
                             N_image = N_image + 1;
                             alpha_count = alpha_count + 1;
                         }
-                    } else {
+                    }
+                    else {
                         // The ray did not intersect with any triangle
-                        if (mesh->use_bg_shadow){
+                        if (mesh->use_bg_shadow) {
                             float z_plane = mesh->bg_z;
 
                             int dt = output_stride * j + i * 4;
-                            RgbF base_bg = {(float)output_image[dt + 0], (float)output_image[dt + 1], (float)output_image[dt + 2]};
+                            RgbF base_bg = { (float)output_image[dt + 0], (float)output_image[dt + 1], (float)output_image[dt + 2] };
 
                             RgbF shaded = shade_background_from_plane_weighted(
                                 mesh, bvh, rayAfter,
@@ -1134,7 +1145,7 @@ bool reproject_point(Mesh* mesh, float L, float src_x, float src_y, float* dst_x
             float z = u * tri.v0->z + v * tri.v1->z + w * tri.v2->z;
 
             float x_cam = x;
-            float y_cam =  c * y + s * z;
+            float y_cam = c * y + s * z;
             float z_cam = -s * y + c * z;
 
             if (fabsf(z_cam) < 1e-6f) return false;
@@ -1168,7 +1179,7 @@ Mesh* create_mesh(int img_width, int img_height, int wcnt, int hcnt) {
     mesh->use_light_info = false;
     mesh->use_shadow_info = false;
     mesh->triangleCount = wcnt * hcnt * 2;
-    float dx = (img_width  - 1) / float(wcnt);
+    float dx = (img_width - 1) / float(wcnt);
     float dy = (img_height - 1) / float(hcnt);
     mesh->pointCount = (hcnt + 1) * (wcnt + 1);
     mesh->points2d = (Vector2d*)malloc(mesh->pointCount * sizeof(Vector2d));
