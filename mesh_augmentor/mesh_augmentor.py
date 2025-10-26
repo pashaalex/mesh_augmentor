@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple
 import cv2
+import os
 try:
     from typing import Literal  # Python 3.8+
 except ImportError:
@@ -152,12 +153,34 @@ class Mesh(C.Structure):
 
 # --------------------------- Native loader & signatures -----------------------
 
+def _enable_loader_search(dir_path: Path) -> None:
+    """
+    Ensure dependent native libraries in dir_path can be found by the loader.
+    - On Windows (Py 3.8+): use os.add_dll_directory (preferred).
+    - On older Windows Pythons: prepend to PATH.
+    - On POSIX: nothing required; dlopen will see rpath/LD paths. We still do nothing.
+    """
+    if sys.platform.startswith("win"):
+        try:
+            add_dir = getattr(os, "add_dll_directory", None)
+            if add_dir is not None:
+                h = add_dir(str(dir_path))
+                _DLL_DIR_HANDLES.append(h)  # keep alive
+            else:
+                # Fallback for Python < 3.8
+                os.environ["PATH"] = str(dir_path) + os.pathsep + os.environ.get("PATH", "")
+        except Exception:
+            # As a last resort, try PATH prepend
+            os.environ["PATH"] = str(dir_path) + os.pathsep + os.environ.get("PATH", "")
+
+
 def _load_native(lib_path: Optional[str] = None) -> C.CDLL:
     """Load mesh_render.{dll|so|dylib} from same folder or a given path."""
     if lib_path:
         return C.CDLL(lib_path)
     here = Path(__file__).resolve().parent
     here = here / "_lib"
+    _enable_loader_search(here)
     names = (
         ["mesh_render.dll"] if sys.platform.startswith("win")
         else ["libmesh_render.dylib"] if sys.platform == "darwin"
