@@ -305,10 +305,10 @@ class MeshAugmentor:
         m.use_bg_shadow = bool(self.bg_shadow.use)
         m.bg_z = float(self.bg_shadow.bg_z)
         m.bottom_shadow_koef = float(self.bg_shadow.bottom_shadow_koef)
+        m.use_shadow_info = bool(self.bg_shadow.use)
         # Camera pose
         m.camera_tilt_x_rad = float(self.pose.tilt_x_rad)
         # Rect occluder
-        m.use_shadow_info = bool(self.occluder.use)
         self._api.dll.mesh_set_rect_occluder(
             self._mesh,
             float(self.occluder.cx), float(self.occluder.cy), float(self.occluder.cz),
