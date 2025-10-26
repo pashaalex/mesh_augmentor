@@ -183,8 +183,8 @@ def _load_native(lib_path: Optional[str] = None) -> C.CDLL:
     _enable_loader_search(here)
     names = (
         ["mesh_render.dll"] if sys.platform.startswith("win")
-        else ["libmesh_render.dylib"] if sys.platform == "darwin"
-        else ["libmesh_render.so"]
+        else ["mesh_render.dylib"] if sys.platform == "darwin"
+        else ["mesh_render.so"]
     )
     for n in names:
         p = here / n
